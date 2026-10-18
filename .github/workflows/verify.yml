@@ -65,14 +65,14 @@ jobs:
         if: failure()
         run: docker compose logs --tail=100
       - name: Scan backend dependencies and operating system
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: team-canvas-backend
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
       - name: Scan frontend dependencies and operating system
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: team-canvas-frontend
           severity: HIGH,CRITICAL
