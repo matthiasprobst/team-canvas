@@ -1,0 +1,143 @@
+# Replace image names and team-canvas.example.internal before applying.
+# Create the team-canvas Secret separately; never store real secrets in this file.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {app: team-canvas-backend}
+  template:
+    metadata:
+      labels: {app: team-canvas-backend}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: backend
+          image: registry.example.internal/team-canvas/backend:REPLACE_WITH_IMMUTABLE_TAG
+          ports: [{name: http, containerPort: 8080}]
+          envFrom: [{secretRef: {name: team-canvas}}]
+          env:
+            - {name: TEAM_CANVAS_AUTH_REQUIRED, value: "true"}
+            - {name: TEAM_CANVAS_HTTP_POLICY, value: authenticated}
+            - {name: TEAM_CANVAS_ALLOWED_ORIGINS, value: "https://team-canvas.example.internal"}
+            # Use the actual frontend pod CIDR/proxy addresses; never trust arbitrary clients.
+            - {name: TRUSTED_PROXIES, value: "10.0.0.0/8"}
+          resources:
+            requests: {cpu: 250m, memory: 384Mi}
+            limits: {cpu: "2", memory: 1Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+          startupProbe:
+            httpGet: {path: /q/health/started, port: http}
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet: {path: /q/health/ready, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /q/health/live, port: http}
+            periodSeconds: 10
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 128Mi}}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: backend}
+spec:
+  selector: {app: team-canvas-backend}
+  ports: [{name: http, port: 8080, targetPort: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: frontend}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: team-canvas-frontend}
+  template:
+    metadata:
+      labels: {app: team-canvas-frontend}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: frontend
+          image: registry.example.internal/team-canvas/frontend:REPLACE_WITH_IMMUTABLE_TAG
+          command: [caddy]
+          args: [run, --config, /etc/caddy/Caddyfile, --adapter, caddyfile]
+          # Unprivileged port configured through the mounted Caddyfile below.
+          ports: [{name: http, containerPort: 8080}]
+          resources:
+            requests: {cpu: 50m, memory: 32Mi}
+            limits: {cpu: 500m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: caddyfile, mountPath: /etc/caddy/Caddyfile, subPath: Caddyfile, readOnly: true}
+            - {name: data, mountPath: /data}
+            - {name: config, mountPath: /config}
+          readinessProbe:
+            httpGet: {path: /, port: http}
+          livenessProbe:
+            httpGet: {path: /, port: http}
+      volumes:
+        - name: caddyfile
+          configMap: {name: team-canvas-caddy}
+        - {name: data, emptyDir: {sizeLimit: 16Mi}}
+        - {name: config, emptyDir: {sizeLimit: 16Mi}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: frontend}
+spec:
+  selector: {app: team-canvas-frontend}
+  ports: [{name: http, port: 80, targetPort: http}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: team-canvas}
+spec:
+  tls:
+    - hosts: [team-canvas.example.internal]
+      secretName: team-canvas-tls
+  rules:
+    - host: team-canvas.example.internal
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: frontend, port: {name: http}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: team-canvas-backend}
+spec:
+  podSelector:
+    matchLabels: {app: team-canvas-backend}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {app: team-canvas-frontend}
+      ports: [{protocol: TCP, port: 8080}]

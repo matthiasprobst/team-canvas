@@ -1,0 +1,80 @@
+name: Verify
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: board
+          POSTGRES_USER: board
+          POSTGRES_PASSWORD: board-test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U board -d board"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DB_USER: board
+      DB_PASSWORD: board-test
+      JDBC_URL: jdbc:postgresql://localhost:5432/board
+      TEAM_CANVAS_TEST_JDBC_URL: jdbc:postgresql://localhost:5432/board
+      TEAM_CANVAS_AUTH_REQUIRED: "false"
+      TEAM_CANVAS_HTTP_POLICY: permit
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --prefix frontend
+      - run: npm run test:sync --prefix frontend
+      - run: npm run build --prefix frontend
+      - run: mvn -B verify
+        working-directory: backend
+      - name: Start packaged backend and check protocol
+        run: |
+          java -jar backend/target/quarkus-app/quarkus-run.jar > /tmp/team-canvas-backend.log 2>&1 &
+          curl --fail --retry 30 --retry-connrefused --retry-delay 1 http://localhost:8080/q/health/ready
+          BASE_URL=http://localhost:8080 node tests/smoke.mjs
+      - name: Backend output
+        if: failure()
+        run: cat /tmp/team-canvas-backend.log 2>/dev/null || true
+  containers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t team-canvas-backend ./backend
+      - run: docker build -t team-canvas-frontend -f frontend/Dockerfile .
+      - run: docker run --rm team-canvas-frontend caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+      - run: docker run --rm --user 1001:1001 --cap-drop=ALL --security-opt=no-new-privileges team-canvas-frontend caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+      - name: Verify complete Compose stack
+        run: |
+          printf 'DB_PASSWORD=%s\n' "$(openssl rand -hex 24)" > .env
+          docker compose up --build --wait --wait-timeout 180
+          node tests/smoke.mjs
+      - name: Compose output
+        if: failure()
+        run: docker compose logs --tail=100
+      - name: Scan backend dependencies and operating system
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: team-canvas-backend
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Scan frontend dependencies and operating system
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: team-canvas-frontend
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"

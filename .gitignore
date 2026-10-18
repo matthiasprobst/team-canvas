@@ -1,0 +1,13 @@
+.env
+**/node_modules/
+**/dist/
+**/target/
+**/build/
+.idea/
+.vscode/
+*.log
+.test-build/
+
+frontend/public/fonts/
+*.tsbuildinfo
+output/
