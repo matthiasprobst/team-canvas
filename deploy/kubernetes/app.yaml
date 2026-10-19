@@ -28,8 +28,7 @@ spec:
           ports: [{name: http, containerPort: 8080}]
           envFrom: [{secretRef: {name: team-canvas}}]
           env:
-            - {name: TEAM_CANVAS_AUTH_REQUIRED, value: "true"}
-            - {name: TEAM_CANVAS_HTTP_POLICY, value: authenticated}
+            - {name: QUARKUS_OIDC_AUTHENTICATION_COOKIE_FORCE_SECURE, value: "true"}
             - {name: TEAM_CANVAS_ALLOWED_ORIGINS, value: "https://team-canvas.example.internal"}
             # Use the actual frontend pod CIDR/proxy addresses; never trust arbitrary clients.
             - {name: TRUSTED_PROXIES, value: "10.0.0.0/8"}

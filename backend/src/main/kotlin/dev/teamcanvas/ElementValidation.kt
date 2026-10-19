@@ -99,7 +99,7 @@ object ElementValidation {
 
     fun validateElements(items: JsonNode): List<JsonNode> {
         if (!items.isArray || items.size() > 100)
-            fail("invalid_patch", "Maximal 100 Elemente pro Änderung")
+            fail("invalid_patch", "A change can contain at most 100 elements.")
         val ids = mutableSetOf<String>()
         return items.map { raw ->
             if (!raw.isObject || raw.toString().toByteArray(Charsets.UTF_8).size > 100_000)
@@ -381,7 +381,7 @@ object ElementValidation {
     fun validateFiles(files: JsonNode?): Map<String, JsonNode> {
         if (files == null || files.isNull) return emptyMap()
         if (!files.isObject || files.size() > 1)
-            fail("invalid_file", "Ein Bild pro Änderung erlaubt")
+            fail("invalid_file", "Only one image is allowed per change.")
         return files.properties().asSequence().associate { (id, value) ->
             if (
                 !safeId.matches(id) ||
@@ -459,10 +459,10 @@ object ElementValidation {
             (value.length == integerLength || value.last() != '0')
     }
 
-    private fun invalid(): Nothing = fail("invalid_element", "Ungültige Elementdaten")
+    private fun invalid(): Nothing = fail("invalid_element", "Invalid element data.")
 
     private fun invalidFile(): Nothing =
-        fail("invalid_file", "Ungültiges Bild oder Bild größer als 1 MB")
+        fail("invalid_file", "Invalid image or image larger than 1 MB.")
 
     private fun fail(code: String, message: String): Nothing = throw ClientException(code, message)
 }

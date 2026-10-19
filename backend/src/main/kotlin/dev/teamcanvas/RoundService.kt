@@ -15,7 +15,7 @@ class RoundService @Inject constructor(private val repository: BoardRepository) 
             }
             RoundRules.requireContext(state, context)
             if (state.mode != "standard")
-                throw ClientException("invalid_state", "Eine Runde läuft bereits")
+                throw ClientException("invalid_state", "A round is already in progress.")
             val id = UUID.randomUUID()
             connection
                 .prepareStatement("INSERT INTO rounds(id,board_id,status) VALUES(?,?,'editing')")
@@ -28,7 +28,7 @@ class RoundService @Inject constructor(private val repository: BoardRepository) 
                 connection
                     .prepareStatement(
                         """INSERT INTO round_participants(round_id,participant_id)
-                        SELECT ?,id FROM participants WHERE id=? AND board_id=? AND revoked=false AND expires_at>now()"""
+                        SELECT ?,id FROM participants WHERE id=? AND board_id=? AND revoked=false AND user_id IS NOT NULL"""
                     )
                     .use {
                         it.setObject(1, id)
@@ -60,9 +60,9 @@ class RoundService @Inject constructor(private val repository: BoardRepository) 
             RoundRules.requireContext(state, context)
             val round = repository.round(connection, state, who)
             if (round == null || !round.included)
-                throw ClientException("locked", "Du bist nicht in dieser Runde")
+                throw ClientException("locked", "You are not included in this round.")
             if (round.draftRevision != draftRevision)
-                throw ClientException("unsaved_draft", "Bitte zuerst alle Änderungen speichern")
+                throw ClientException("unsaved_draft", "Save all changes before marking yourself ready.")
             connection
                 .prepareStatement(
                     "UPDATE round_participants SET done=true WHERE round_id=? AND participant_id=?"
@@ -87,7 +87,7 @@ class RoundService @Inject constructor(private val repository: BoardRepository) 
                 return@command CommandResult(it, duplicate = true)
             }
             RoundRules.requireContext(state, context)
-            if (state.roundId == null) throw ClientException("invalid_state", "Keine aktive Runde")
+            if (state.roundId == null) throw ClientException("invalid_state", "No active round.")
             finish(connection, state, publish = false)
             CommandResult(
                 repository.commitCommand(connection, who, context.commandId),

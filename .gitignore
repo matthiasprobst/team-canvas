@@ -11,3 +11,5 @@
 frontend/public/fonts/
 *.tsbuildinfo
 output/
+test-results/
+playwright-report/

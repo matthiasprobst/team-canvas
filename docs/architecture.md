@@ -7,7 +7,10 @@ Team Canvas uses a React/TypeScript frontend with Excalidraw, a Quarkus/Kotlin b
 ## Responsibilities
 
 - `BoardResource` adapts HTTP requests for board creation, joins, authorized asset downloads, and invitation management.
-- `BoardStore` applies board access and scene rules using parameterized database queries.
+- `Accounts` provisions verified issuer/subject identities and tracks login revocation.
+- `CanvasAccess` manages ownership, durable memberships, invitations, and independent sessions.
+- `CanvasCatalog` returns authorized metadata pages and validates owner renames.
+- `BoardStore` applies scene rules using parameterized database queries.
 - `RoundService` and `RoundRules` manage the round roster, readiness, cancellation, and publication.
 - `BoardRepository` handles transactions, row locks, persisted readiness, and command receipts.
 - `RoomHub` and `BoardSocket` manage connections, presence, ordered output, and authorized delivery.
@@ -29,13 +32,21 @@ The backend assumes a single active instance. PostgreSQL row locks serialize boa
 
 ## Access and identity
 
-Production mode requires a company OIDC identity and binds participant access to the validated `sub`. An invitation is required for first admission; existing admitted company members can rejoin. Board tokens expire after 24 hours. The host can rotate the invitation and revoke all guest sessions, including active sockets. Sockets also close when the OIDC ID token expires.
+Keycloak sign-in is required in every environment. Quarkus validates OIDC tokens and manages HttpOnly encrypted session cookies. The application accepts only JWT principals with issuer, subject, an unexpired ID token, and Keycloak `sid`. Local accounts are unique by `(issuer, subject)`; display names come from verified claims.
 
-Explicit local guest mode uses invitation and host keys without company identity binding. Invitation links contain a dedicated secret in their URL fragment; host keys are separate and must remain private.
+Each canvas has an owning account and a durable participant membership per user. Membership IDs remain the same across devices, tabs, logout, and token expiry. The role used for WebSocket commands is derived from the owning account. Legacy guest rows are retained but not claimed or listed.
+
+Board-session tokens are random, hashed in PostgreSQL, expire after 24 hours, and bind the participant to a particular user and Keycloak login `sid`. Each open gets an independent token. Logout revokes that login's ledger entry and board sessions and closes its sockets before RP-initiated Keycloak logout; a different device login remains valid. Database commands recheck membership, board-session expiry, and login revocation under locks. Replayed cookies cannot resurrect a revoked login.
+
+Only owners can create or revoke invitations. Each new link stores a separate hashed secret. Preview and explicit acceptance require both a signed-in account and the secret. Acceptance atomically adds or reactivates the existing membership. Invites grant member access, never ownership. Revocation can affect only links or also all shared memberships; it never edits the frozen poker roster.
+
+The dashboard returns only metadata scoped to active membership, with bounded cursor pagination and a user/filter-bound cursor. It never creates sockets or returns scene/private-round data. Names are broadcast as a `metadata` event serialized with other board events; this does not replace editor state.
+
+React Router owns dashboard, invitation, editor, and logout navigation. The editor is loaded lazily. Route changes guard pending commands, unexported drafts, and unfinished poker participation. Old sockets must finish closing before the next connection opens; asset requests and timers are cancelled on unmount. A tab uses no persistent bearer-token storage.
 
 ## Protocol
 
-Connect to `/ws/boards/{boardId}` and send `hello` with the board token. Production OIDC and allowed-origin checks also apply to the WebSocket upgrade.
+Connect to `/ws/boards/{boardId}` and send `hello` with the board token. OIDC and allowed-origin checks also apply to the WebSocket upgrade.
 
 Mutating commands contain a UUID `commandId`, the board `epoch`, and a UUID `roundId` or `null`. The server stores command receipts for at least two days; participant tokens are valid for at most one day.
 
@@ -48,9 +59,9 @@ Mutating commands contain a UUID `commandId`, the board `epoch`, and a UUID `rou
 | `resync` | Sends an authorized snapshot, limited to once every two seconds |
 | `cursor` / `ping` | Sends transient position in standard mode or checks the connection |
 
-Server events are `snapshot`, `patch`, `ack`, `round`, `presence`, `cursor`, `pong`, and `error`. The shared types live in [`protocol.ts`](../frontend/src/protocol.ts); [`protocolCodec.ts`](../frontend/src/protocolCodec.ts) validates incoming events.
+Server events are `snapshot`, `patch`, `ack`, `round`, `metadata`, `presence`, `cursor`, `pong`, and `error`. The shared types live in [`protocol.ts`](../frontend/src/protocol.ts); [`protocolCodec.ts`](../frontend/src/protocolCodec.ts) validates incoming events.
 
-Snapshots include image IDs, not image bytes. Assets are fetched individually through `GET /api/boards/{id}/assets/{assetId}` using `X-Board-Token` and, in production, the OIDC session. Asset responses use `Cache-Control: private, no-store`.
+Snapshots include image IDs, not image bytes. Assets are fetched individually through `GET /api/boards/{id}/assets/{assetId}` using `X-Board-Token` and the OIDC session. Asset responses use `Cache-Control: private, no-store`.
 
 ## Resource limits
 
@@ -79,3 +90,9 @@ Internal endpoints:
 - Application metric names use `team.canvas.*`, exposed as `team_canvas_*` in Prometheus.
 
 Database ownership loss makes the backend unready and rejects commands. Logs avoid tokens and drawing contents. See the [deployment guide](../deploy/kubernetes/README.md) for cluster configuration and monitoring requirements.
+
+## Identity provider and development proxy
+
+Compose persists the development realm in `keycloakdata` and exposes Keycloak directly on its own public URL and host port. Browser authorization and end-session endpoints use `KEYCLOAK_PUBLIC_URL`; the OIDC issuer uses the same URL, while token/JWKS endpoints use the internal service address with discovery disabled only in Compose. The app callback and post-logout URLs use `PUBLIC_ORIGIN`. Production uses discovery against company Keycloak, TLS, secure cookies, and an encrypted session/state secret. There is no supported authentication bypass.
+
+See [Keycloak realm import](https://www.keycloak.org/server/importExport), [hostname configuration](https://www.keycloak.org/server/hostname), and [Quarkus OIDC configuration](https://quarkus.io/guides/security-oidc-expanded-configuration/) for the upstream configuration contracts.

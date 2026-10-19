@@ -33,7 +33,11 @@ class BoardRepository @Inject constructor(private val dataSource: DataSource) {
             .use { statement ->
                 statement.setObject(1, id)
                 statement.executeQuery().use { rows ->
-                    if (!rows.next()) throw ClientException("not_found", "Board existiert nicht")
+                    if (!rows.next())
+                        throw ClientException(
+                            "not_found",
+                            "Canvas not found or access is unavailable.",
+                        )
                     BoardState(
                         id,
                         rows.getString("name"),
@@ -49,14 +53,18 @@ class BoardRepository @Inject constructor(private val dataSource: DataSource) {
         val active =
             connection
                 .prepareStatement(
-                    "SELECT 1 FROM participants WHERE id=? AND board_id=? AND revoked=false AND expires_at>now()"
+                    """SELECT 1 FROM participants p JOIN board_sessions s ON s.participant_id=p.id
+                    JOIN login_sessions l ON l.user_id=s.user_id AND l.sid=s.sid
+                    WHERE p.id=? AND p.board_id=? AND p.revoked=false AND s.token_hash=?
+                    AND s.revoked=false AND s.expires_at>now() AND l.revoked=false FOR SHARE OF l,s,p"""
                 )
                 .use { statement ->
                     statement.setObject(1, who.id)
                     statement.setObject(2, who.boardId)
+                    statement.setString(3, who.sessionHash)
                     statement.executeQuery().use { it.next() }
                 }
-        if (!active) throw ClientException("unauthorized", "Zugang abgelaufen oder widerrufen")
+        if (!active) throw ClientException("unauthorized", "Access expired or was revoked.")
     }
 
     fun round(connection: Connection, state: BoardState, who: Participant): RoundState? {
@@ -132,8 +140,7 @@ class BoardRepository @Inject constructor(private val dataSource: DataSource) {
                         rows.getLong(1)
                     }
                 }
-        if (count >= 50_000)
-            throw ClientException("daily_limit", "Tageslimit für Änderungen erreicht")
+        if (count >= 50_000) throw ClientException("daily_limit", "Daily change limit reached.")
         val revision =
             connection
                 .prepareStatement(

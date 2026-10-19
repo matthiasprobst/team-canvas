@@ -11,7 +11,10 @@
   @backend path /api/* /ws/*
   handle @backend {
     header Cache-Control no-store
-    reverse_proxy backend:8080
+    reverse_proxy backend:8080 {
+      # This ingress is HTTPS-only; do not forward its internal HTTP hop as the public scheme.
+      header_up X-Forwarded-Proto https
+    }
   }
   handle {
     root * /srv

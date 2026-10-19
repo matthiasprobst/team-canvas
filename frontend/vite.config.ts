@@ -1,9 +1,11 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+const proxy = process.env.TEAM_CANVAS_DEV_PROXY ?? "http://localhost:8080";
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   server: { port: 5173, proxy: {
-    "/api": "http://localhost:8080",
-    "/ws": { target: "ws://localhost:8080", ws: true },
+    "/api": proxy,
+    "/ws": { target: proxy, ws: true },
   } },
 });
