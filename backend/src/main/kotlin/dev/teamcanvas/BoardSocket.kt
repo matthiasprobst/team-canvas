@@ -432,6 +432,21 @@ constructor(
             name
         }
 
+    fun delete(id: UUID, action: () -> Unit) =
+        synchronized(lock(id)) {
+            action()
+            modes.remove(id)
+            audience(id).forEach {
+                send(it, mapOf(
+                    "type" to "error",
+                    "commandId" to null,
+                    "code" to "canvas_deleted",
+                    "message" to "This canvas was deleted by its owner.",
+                ))
+                it.closeAfterDrain(1008, "Canvas deleted")
+            }
+        }
+
     fun revoke(id: UUID, revokeMembers: Boolean, action: () -> Unit) =
         synchronized(lock(id)) {
             action()

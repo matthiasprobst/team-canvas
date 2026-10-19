@@ -6,14 +6,16 @@ React, TypeScript, Tailwind, Excalidraw, Kotlin/Quarkus, PostgreSQL, and Keycloa
 
 ## Features
 
-- A personal dashboard with **All canvases**, **My canvases**, and **Shared with me**, plus search and sorting.
+- A personal dashboard with **All canvases**, **My canvases**, and **Shared with me**, plus search by canvas name or tags and sorting. Owners can add up to 20 tags per canvas; suggestions come from tags on their own canvases, and template copies keep their source tags.
 - Create canvases, rename those you own, and share invitation links. Recipients sign in and explicitly accept invitations.
+- Mark canvases you own as private templates, or make them public for all signed-in users. Owners can edit templates from the Templates page; starting a template opens an independent canvas copied from its shared drawings and images, so changes affect future copies only.
+- Delete canvases you own from the dashboard’s actions menu. Confirmation permanently removes all contents and invitations for everyone, including active poker rounds; connected viewers are notified.
 - Persistent account membership across browsers/devices; independent sessions in multiple tabs.
 - Collaborative shapes, text, sticky notes, images, presence, and shared cursors.
 - Private poker contributions, server-enforced readiness, and automatic all-ready publication.
 - Canvas switching with pending-change protection and draft export.
 
-The backend supports **one active instance per database** and **ten simultaneous connections per canvas**, including multiple tabs. Bots, deletion, archive, and revision history are not implemented.
+The backend supports **one active instance per database** and **ten simultaneous connections per canvas**, including multiple tabs. Bots, archive, and revision history are not implemented.
 
 ## Quick start
 

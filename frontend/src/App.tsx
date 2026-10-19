@@ -11,7 +11,7 @@ import { Modal, ShareDialog } from "./ui";
 export default function BoardEditor({ boardId, identity }: { boardId: string; identity: Identity }) {
   const locationState = useLocation().state as { dashboard?: string } | null;
   const dashboard = locationState?.dashboard?.startsWith("/?") ? locationState.dashboard : "/";
-  const { view, people, editorRef, onChange, setEditor, pointer, control, recoveryExported } = useBoardSession(boardId, identity);
+  const { view, people, deleted, editorRef, onChange, setEditor, pointer, control, recoveryExported } = useBoardSession(boardId, identity);
   const { snapshot, online, error } = view;
   const [switching, setSwitching] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -49,14 +49,15 @@ export default function BoardEditor({ boardId, identity }: { boardId: string; id
     if (recovered) recoveryExported();
   };
 
-  const unfinished = !!round?.included && !round.done;
-  const blocker = useBlocker(view.unsaved || view.busy || view.recovery.length > 0 || unfinished);
+  const unfinished = !deleted && !!round?.included && !round.done;
+  const waiting = !deleted && view.busy;
+  const blocker = useBlocker(view.unsaved || waiting || view.recovery.length > 0 || unfinished);
   useEffect(() => {
-    if (blocker.state === "blocked" && !view.unsaved && !view.busy && !view.recovery.length && !unfinished) blocker.proceed();
-  }, [blocker, view.unsaved, view.busy, view.recovery.length, unfinished]);
+    if (blocker.state === "blocked" && !view.unsaved && !waiting && !view.recovery.length && !unfinished) blocker.proceed();
+  }, [blocker, view.unsaved, waiting, view.recovery.length, unfinished]);
   return <div className="layout">
     {blocker.state === "blocked" && <Modal title="Leave this canvas?" close={() => blocker.reset()}>
-      {(view.unsaved || view.busy) && <p>{online ? "Waiting for the server to confirm your changes…" : "You are offline. Some changes have not been saved."}</p>}
+      {(view.unsaved || waiting) && <p>{online ? "Waiting for the server to confirm your changes…" : "You are offline. Some changes have not been saved."}</p>}
       {!!view.recovery.length && <p>A recovered draft has not been exported.</p>}
       {unfinished && <p>You are not ready in the current poker round. Leaving keeps you in the round; your team will wait until you return and mark yourself ready.</p>}
       <div className="flex flex-wrap gap-3 mt-5"><button className="button" onClick={() => blocker.reset()}>Stay here</button>
@@ -75,9 +76,9 @@ export default function BoardEditor({ boardId, identity }: { boardId: string; id
       {poker && <span className="pill poker">🔒 Poker round</span>}
       <div className="spacer" />
       <button onClick={sticky} disabled={!editable}>＋ Sticky note</button>
-      {isHost && <button onClick={() => setSharing(true)}>Share</button>}
+      {isHost && !deleted && <button onClick={() => setSharing(true)}>Share</button>}
       <Link className="back-link" to="/logout">Sign out</Link>
-      {!online && error && <button onClick={() => {
+      {!online && error && !deleted && <button onClick={() => {
         location.reload();
       }}>Rejoin</button>}
       {isHost && !poker && <button className="primary" onClick={() => control("start_round")} disabled={!online || view.busy}>Start poker</button>}

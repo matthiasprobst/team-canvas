@@ -102,6 +102,130 @@ class BoardStoreIntegrationTest {
     }
 
     @Test
+    fun `only the owner can delete a canvas and all related data is removed`() {
+        val room = room()
+        val other = access.create("Keep this canvas", room.owner)
+        error("not_found") { catalog.delete(room.board.id, room.visitor) }
+        error("not_found") { catalog.delete(room.board.id, user("Outsider")) }
+        rounds.start(room.host, context(room.host), setOf(room.host.id, room.guest.id))
+        val image = json.readTree(
+            """{"id":"file","mimeType":"image/png","created":1,"dataURL":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4//8/AwAI/AL+Skg5VwAAAABJRU5ErkJggg=="}"""
+        )
+        val element = (shape("image") as com.fasterxml.jackson.databind.node.ObjectNode)
+            .put("type", "image").put("fileId", "file")
+        store.patch(room.guest, context(room.guest), listOf(element), mapOf("file" to image))
+        val roundId = store.snapshot(room.host).board.roundId
+        catalog.delete(room.board.id, room.owner)
+        dataSource.connection.use { c ->
+            for (table in listOf("boards", "participants", "rounds", "elements", "assets", "board_invitations")) {
+                val column = if (table == "boards") "id" else "board_id"
+                assertEquals(0L, c.query("SELECT count(*) FROM $table WHERE $column=?", room.board.id) {
+                    it.next(); it.getLong(1)
+                }, table)
+            }
+            assertEquals(0L, c.query("SELECT count(*) FROM round_participants WHERE round_id=?", roundId) {
+                it.next(); it.getLong(1)
+            })
+            for (table in listOf("board_sessions", "command_receipts")) {
+                assertEquals(0L, c.query("SELECT count(*) FROM $table WHERE participant_id IN (?,?)", room.host.id, room.guest.id) {
+                    it.next(); it.getLong(1)
+                }, table)
+            }
+        }
+        assertEquals(listOf(other.id), catalog.list(room.owner, "all", "", "recent", 24, null).items.map { it.id })
+        assertTrue(catalog.list(room.visitor, "all", "", "recent", 24, null).items.isEmpty())
+        error("unauthorized") { access.authenticate(room.board.id, room.guestToken, room.visitor) }
+        error("not_found") { access.join(room.board.id, JoinRequest(room.inviteKey), room.visitor) }
+        error("not_found") { access.preview(room.board.id, room.inviteKey, room.visitor) }
+        error("not_found") { catalog.delete(room.board.id, room.owner) }
+        accounts.logout(room.owner)
+        error("unauthorized") { catalog.delete(other.id, room.owner) }
+    }
+
+    @Test
+    fun `private and public templates create independent canvases with shared content only`() {
+        val room = room()
+        catalog.setTags(room.board.id, listOf("planning", " Q3 roadmap "), room.owner)
+        val publicImage = json.readTree(
+            """{"id":"public-file","mimeType":"image/png","created":1,"dataURL":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4//8/AwAI/AL+Skg5VwAAAABJRU5ErkJggg=="}"""
+        )
+        val publicImageElement = (shape("public-image") as com.fasterxml.jackson.databind.node.ObjectNode)
+            .put("type", "image").put("fileId", "public-file")
+        store.patch(room.host, context(room.host), listOf(shape("shared-shape"), publicImageElement), mapOf("public-file" to publicImage))
+
+        rounds.start(room.host, context(room.host), setOf(room.host.id, room.guest.id))
+        val privateImage = publicImage.deepCopy<com.fasterxml.jackson.databind.node.ObjectNode>()
+            .put("id", "private-file")
+        val privateImageElement = (shape("private-image") as com.fasterxml.jackson.databind.node.ObjectNode)
+            .put("type", "image").put("fileId", "private-file")
+        store.patch(room.guest, context(room.guest), listOf(shape("private-shape"), privateImageElement), mapOf("private-file" to privateImage))
+
+        error("not_found") { catalog.startTemplate(room.board.id, "Unauthorized copy", room.visitor) }
+        error("not_found") { catalog.markTemplate(room.board.id, "public", room.visitor) }
+        catalog.markTemplate(room.board.id, "private", room.owner)
+        assertEquals("private", catalog.list(room.owner, "templates", "", "recent", 24, null).items.single().templateVisibility)
+        assertTrue(catalog.list(room.visitor, "templates", "", "recent", 24, null).items.isEmpty())
+        assertNull(catalog.list(room.visitor, "shared", "", "recent", 24, null).items.single().templateVisibility)
+        val privateCopy = catalog.startTemplate(room.board.id, "Private working copy", room.owner)
+        assertEquals("Private working copy", privateCopy.name)
+        assertNotEquals(room.board.id, privateCopy.id)
+        error("not_found") { catalog.startTemplate(room.board.id, "Unauthorized copy", room.visitor) }
+
+        catalog.markTemplate(room.board.id, "public", room.owner)
+        val publicTemplates = catalog.list(room.visitor, "templates", "", "recent", 24, null).items
+        assertEquals(listOf(room.board.id), publicTemplates.map { it.id })
+        assertEquals("public", publicTemplates.single().templateVisibility)
+
+        val starter = user("Starter")
+        assertEquals(listOf(room.board.id), catalog.list(starter, "templates", "", "recent", 24, null).items.map { it.id })
+        val copy = catalog.startTemplate(room.board.id, "Planning session", starter)
+        assertEquals("Planning session", copy.name)
+        assertNotEquals(room.board.id, copy.id)
+        assertEquals(listOf("planning", "Q3 roadmap"), catalog.list(starter, "mine", "ROADMAP", "recent", 24, null).items.single().tags)
+        assertEquals(listOf("planning", "Q3 roadmap"), catalog.list(starter, "mine", "planning", "recent", 24, null).items.single().tags)
+        assertEquals(listOf("planning", "Q3 roadmap"), catalog.tagSuggestions(room.owner))
+        assertEquals(listOf("planning", "Q3 roadmap"), catalog.tagSuggestions(starter))
+        val joined = access.join(copy.id, JoinRequest(), starter)
+        assertEquals("host", joined.role)
+        val copiedParticipant = access.authenticate(copy.id, joined.token, starter)
+        val copiedScene = store.snapshot(copiedParticipant)
+        assertEquals("standard", copiedScene.board.mode)
+        assertNull(copiedScene.round)
+        assertEquals(setOf("shared-shape", "public-image"), copiedScene.elements.map { it.path("id").asText() }.toSet())
+        assertEquals(listOf("public-file"), copiedScene.fileIds)
+        assertTrue(catalog.list(starter, "mine", "", "recent", 24, null).items.any { it.id == copy.id && it.templateVisibility == null })
+
+        store.patch(copiedParticipant, context(copiedParticipant), listOf(shape("copy-only")), emptyMap())
+        assertTrue(store.snapshot(room.host).elements.none { it.path("id").asText() == "copy-only" })
+        assertTrue(store.snapshot(room.guest).elements.any { it.path("id").asText() == "private-shape" })
+        assertTrue(store.snapshot(room.guest).fileIds.contains("private-file"))
+
+        catalog.unmarkTemplate(room.board.id, room.owner)
+        assertTrue(catalog.list(starter, "templates", "", "recent", 24, null).items.isEmpty())
+        error("not_found") { catalog.startTemplate(room.board.id, "Unauthorized copy", starter) }
+    }
+
+    @Test
+    fun `canvas tags are owner managed searchable shared and normalized`() {
+        val room = room()
+        val other = access.create("Quarterly planning", room.owner)
+        catalog.setTags(room.board.id, listOf("  Planning ", "Design"), room.owner)
+
+        assertEquals(listOf("Design", "Planning"), catalog.list(room.owner, "mine", "design", "recent", 24, null).items.single().tags)
+        assertEquals(listOf(room.board.id), catalog.list(room.visitor, "shared", "design", "recent", 24, null).items.map { it.id })
+        assertEquals(listOf(other.id), catalog.list(room.owner, "mine", "quarterly", "recent", 24, null).items.map { it.id })
+        assertEquals(listOf("Design", "Planning"), catalog.tagSuggestions(room.owner))
+
+        error("not_found") { catalog.setTags(room.board.id, listOf("intruder"), room.visitor) }
+        error("bad_request") { catalog.setTags(room.board.id, listOf("Planning", "planning"), room.owner) }
+        error("bad_request") { catalog.setTags(room.board.id, List(21) { "tag$it" }, room.owner) }
+        error("bad_request") { catalog.setTags(room.board.id, listOf(""), room.owner) }
+        catalog.setTags(room.board.id, emptyList(), room.owner)
+        assertTrue(catalog.list(room.owner, "mine", "design", "recent", 24, null).items.isEmpty())
+        assertEquals(listOf(other.id), catalog.list(room.owner, "mine", "quarterly", "recent", 24, null).items.map { it.id })
+    }
+
+    @Test
     fun `private elements and images reveal only when every roster member is ready`() {
         val room = room()
         rounds.start(room.host, context(room.host), setOf(room.host.id, room.guest.id))

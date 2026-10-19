@@ -14,6 +14,7 @@ const initialView: SessionView = { snapshot: null, elements: [], files: {}, onli
 export function useBoardSession(boardId: string, identity: Identity) {
   const [view, setView] = useState<SessionView>(initialView);
   const [people, setPeople] = useState<Presence[]>([]);
+  const [deleted, setDeleted] = useState(false);
   const editorRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const viewRef = useRef(view);
@@ -76,6 +77,7 @@ export function useBoardSession(boardId: string, identity: Identity) {
 
   useEffect(() => {
     let stopped = false;
+    let canvasDeleted = false;
     let retry: ReturnType<typeof setTimeout> | undefined;
     let failures = 0;
     let lastMessageAt = Date.now();
@@ -88,11 +90,16 @@ export function useBoardSession(boardId: string, identity: Identity) {
       socketRef.current = socket;
       socket.addEventListener("open", () => socket.send(JSON.stringify({ type: "hello", token: identity.token })));
       socket.addEventListener("message", event => {
-        if (stopped || socketRef.current !== socket) return;
+        if (stopped || canvasDeleted || socketRef.current !== socket) return;
         lastMessageAt = Date.now();
         let packet: ServerEvent;
         try { packet = parseServerEvent(String(event.data)); } catch { socket.close(1002); return; }
         if (packet.type === "error" && !packet.commandId) rejectionMessage = packet.message;
+        if (packet.type === "error" && packet.code === "canvas_deleted") {
+          canvasDeleted = true; setDeleted(true); setPeople([]);
+          controller.disconnected(packet.message);
+          return;
+        }
         if (packet.type === "presence") {
           peopleRef.current = packet.participants;
           setPeople(packet.participants);
@@ -108,8 +115,8 @@ export function useBoardSession(boardId: string, identity: Identity) {
       socket.addEventListener("close", event => {
         if (stopped || socketRef.current !== socket) return;
         controller.disconnected(rejectionMessage ?? (event.code === 1008 ? "Access expired, was revoked, or the room is full. Please rejoin." : undefined));
-        if (event.code === 1008 || event.code === 1006) void checkCompanySession().catch(() => {});
-        if (event.code !== 1008) retry = setTimeout(connect, Math.min(15_000, 1000 * 2 ** failures++) + Math.random() * 400);
+        if (!canvasDeleted && (event.code === 1008 || event.code === 1006)) void checkCompanySession().catch(() => {});
+        if (!canvasDeleted && event.code !== 1008) retry = setTimeout(connect, Math.min(15_000, 1000 * 2 ** failures++) + Math.random() * 400);
       });
       socket.addEventListener("error", () => socket.close());
     }
@@ -122,7 +129,7 @@ export function useBoardSession(boardId: string, identity: Identity) {
       else socket.send(JSON.stringify({ type: "ping" }));
     }, 15_000);
     const unload = (event: BeforeUnloadEvent) => {
-      if (controller.view().unsaved || controller.view().busy || controller.view().recovery.length || (controller.view().snapshot?.round?.included && !controller.view().snapshot?.round?.done)) { event.preventDefault(); event.returnValue = ""; }
+      if (controller.view().unsaved || controller.view().recovery.length || (!canvasDeleted && (controller.view().busy || (controller.view().snapshot?.round?.included && !controller.view().snapshot?.round?.done)))) { event.preventDefault(); event.returnValue = ""; }
     };
     window.addEventListener("beforeunload", unload);
     return () => {
@@ -186,5 +193,5 @@ export function useBoardSession(boardId: string, identity: Identity) {
 
   const control = useCallback((type: ControlType) => controller.control(type), [controller]);
   const recoveryExported = useCallback(() => controller.recoveryExported(), [controller]);
-  return { view, people, editorRef, onChange, setEditor, pointer, control, recoveryExported };
+  return { view, people, deleted, editorRef, onChange, setEditor, pointer, control, recoveryExported };
 }

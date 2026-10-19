@@ -18,7 +18,13 @@ data class CanvasSummary(
     val relationship: String,
     val createdAt: String,
     val lastOpenedAt: String?,
+    val templateVisibility: String? = null,
+    val tags: List<String> = emptyList(),
 )
+
+data class TemplateVisibilityRequest(val visibility: String = "private")
+
+data class CanvasTagsRequest(val tags: List<String> = emptyList())
 
 data class CanvasPage(val items: List<CanvasSummary>, val nextCursor: String?)
 

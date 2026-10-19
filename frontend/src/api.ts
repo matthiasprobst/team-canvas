@@ -1,12 +1,13 @@
 import type { BinaryFile } from "./protocol";
 export interface Identity { id: string; participantId: string; role: "host" | "guest"; token: string }
 export interface Account { id: string; displayName: string }
-export interface Canvas { id: string; name: string; owner: Account; relationship: "owner" | "member"; createdAt: string; lastOpenedAt: string | null }
+export type TemplateVisibility = "private" | "public";
+export interface Canvas { id: string; name: string; owner: Account; relationship: "owner" | "member"; createdAt: string; lastOpenedAt: string | null; templateVisibility?: TemplateVisibility | null; tags: string[] }
 export interface CanvasPage { items: Canvas[]; nextCursor: string | null }
 export class ApiError extends Error { constructor(message: string, public readonly status: number) { super(message); } }
-export async function request<T>(path: string, body?: object, method = "POST", signal?: AbortSignal): Promise<T> {
+export async function request<T>(path: string, body?: object, method = body ? "POST" : "GET", signal?: AbortSignal): Promise<T> {
   const response = await fetch(path, {
-    method: body ? method : "GET", signal, cache: "no-store",
+    method, signal, cache: "no-store",
     headers: { "X-Requested-With": "JavaScript", ...(body ? { "Content-Type": "application/json" } : {}) },
     ...(body ? { body: JSON.stringify(body) } : {})
   });
@@ -20,6 +21,12 @@ export const me = (signal?: AbortSignal) => request<Account>("/api/me", undefine
 export const createBoard = (name: string) => request<{ id: string; name: string }>("/api/boards", { name });
 export const joinBoard = (id: string, inviteKey?: string) => request<Identity>(`/api/boards/${id}/join`, { inviteKey });
 export const renameBoard = (id: string, name: string) => request<{ name: string }>(`/api/boards/${id}`, { name }, "PATCH");
+export const deleteBoard = (id: string) => request<void>(`/api/boards/${id}`, undefined, "DELETE");
+export const setTemplateVisibility = (id: string, visibility: TemplateVisibility) => request<void>(`/api/boards/${id}/template`, { visibility }, "PUT");
+export const removeTemplate = (id: string) => request<void>(`/api/boards/${id}/template`, undefined, "DELETE");
+export const startTemplate = (id: string, name: string) => request<{ id: string; name: string }>(`/api/boards/${id}/start-template`, { name }, "POST");
+export const setCanvasTags = (id: string, tags: string[]) => request<void>(`/api/boards/${id}/tags`, { tags }, "PUT");
+export const getTagSuggestions = () => request<string[]>("/api/boards/tags/suggestions");
 export const createInvitation = (id: string) => request<{ inviteKey: string }>(`/api/boards/${id}/invitations`, {});
 export const previewInvitation = (id: string, inviteKey: string, signal?: AbortSignal) => request<{ name: string; ownerName: string }>(`/api/boards/${id}/invitations/preview`, { inviteKey }, "POST", signal);
 export const revokeInvitations = (id: string, revokeMembers: boolean) => request<void>(`/api/boards/${id}/invitations/revoke`, { revokeMembers });
