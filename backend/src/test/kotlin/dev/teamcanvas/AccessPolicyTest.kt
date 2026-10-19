@@ -8,22 +8,11 @@ class AccessPolicyTest {
     @Test
     fun `production requires an authenticated identity and an exact trusted origin`() {
         val policy = AccessPolicy().apply { origins = "https://team-canvas.example.internal" }
-        assertThrows(ClientException::class.java) { policy.subject(null) }
-        assertEquals("employee-id", policy.subject(Principal { "employee-id" }))
+        assertThrows(ClientException::class.java) { loginIdentity(null) }
+        assertThrows(ClientException::class.java) { loginIdentity(Principal { "employee-id" }) }
         assertTrue(policy.allowsOrigin("https://team-canvas.example.internal"))
         assertFalse(policy.allowsOrigin("https://team-canvas.example.internal.attacker.test"))
         assertFalse(policy.allowsOrigin(null))
-    }
-
-    @Test
-    fun `guest mode is an explicit local development setting`() {
-        val policy =
-            AccessPolicy().apply {
-                authRequired = false
-                origins = "http://localhost:8088"
-            }
-        assertNull(policy.subject(null))
-        assertTrue(policy.allowsOrigin(null))
     }
 
     @Test

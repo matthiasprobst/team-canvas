@@ -175,3 +175,16 @@ test('a missing acknowledgement retries safely while the socket remains connecte
   now = 15_000; session.flush();
   assert.deepEqual(sent[1], sent[0]);
 });
+
+test('renaming during poker preserves unacknowledged edits and frozen readiness', () => {
+  const { session, sent } = client(true);
+  session.localChange([box('public'), box('private', 17)], {});
+  session.flush();
+  session.receive({ type: 'metadata', name: 'Renamed' });
+  assert.equal(session.view().snapshot.board.name, 'Renamed');
+  assert.equal(session.view().elements.find(element => element.id === 'private').x, 17);
+  assert.equal(session.view().unsaved, true);
+  assert.equal(session.view().snapshot.round.members.length, 2);
+  accepted(session, sent[0], 1, 'private');
+  assert.equal(session.view().unsaved, false);
+});

@@ -56,6 +56,7 @@ export type PatchEvent = {
 };
 export type ServerEvent =
   | { type: "pong" }
+  | { type: "metadata"; name: string }
   | { type: "snapshot"; data: Snapshot }
   | PatchEvent
   | { type: "ack"; commandId: string; revision: number }

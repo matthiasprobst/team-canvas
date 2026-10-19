@@ -3,16 +3,26 @@ package dev.teamcanvas
 import com.fasterxml.jackson.databind.JsonNode
 import java.util.UUID
 
-data class CreateBoardRequest(val name: String = "Neues Board")
+data class CreateBoardRequest(val name: String = "Untitled canvas")
 
-data class CreatedBoard(val id: UUID, val hostKey: String, val inviteKey: String)
+data class CreatedBoard(val id: UUID, val name: String)
 
-data class JoinRequest(
-    val name: String = "Gast",
-    val token: String? = null,
-    val hostKey: String? = null,
-    val inviteKey: String? = null,
+data class JoinRequest(val inviteKey: String? = null)
+
+data class OwnerSummary(val id: UUID, val displayName: String)
+
+data class CanvasSummary(
+    val id: UUID,
+    val name: String,
+    val owner: OwnerSummary,
+    val relationship: String,
+    val createdAt: String,
+    val lastOpenedAt: String?,
 )
+
+data class CanvasPage(val items: List<CanvasSummary>, val nextCursor: String?)
+
+data class InvitationRequest(val inviteKey: String)
 
 data class JoinedBoard(val id: UUID, val participantId: UUID, val role: String, val token: String)
 
@@ -22,6 +32,7 @@ data class Participant(
     val name: String,
     val role: String,
     val subject: String?,
+    val sessionHash: String = "",
 )
 
 data class BoardState(
@@ -73,7 +84,7 @@ object RoundRules {
         if (state.epoch != command.epoch || state.roundId != command.roundId)
             throw ClientException(
                 "stale_round",
-                "Die Runde hat sich geändert. Dein Entwurf wurde gesichert.",
+                "The round changed. Your draft has been preserved.",
             )
     }
 
@@ -82,6 +93,6 @@ object RoundRules {
 
     fun requireHost(who: Participant) {
         if (who.role != "host")
-            throw ClientException("forbidden", "Nur die Leitung darf Runden steuern")
+            throw ClientException("forbidden", "Only the owner can manage rounds.")
     }
 }

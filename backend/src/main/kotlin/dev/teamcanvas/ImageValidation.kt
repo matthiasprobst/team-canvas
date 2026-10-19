@@ -129,5 +129,5 @@ object ImageValidation {
     }
 
     private fun invalid(): Nothing =
-        throw ClientException("invalid_file", "Bild beschädigt oder zu groß (maximal 16 Megapixel)")
+        throw ClientException("invalid_file", "Image is damaged or too large (maximum 16 megapixels).")
 }

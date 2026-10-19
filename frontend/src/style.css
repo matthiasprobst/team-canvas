@@ -1,13 +1,16 @@
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
 :root { font-family: Inter, ui-sans-serif, system-ui, Arial, sans-serif; color: #213047; }
 * { box-sizing: border-box; }
 body { margin: 0; background: #f5f7fb; }
-button, input { font: inherit; }
-button { cursor: pointer; border: 1px solid #d4daea; border-radius: 9px; padding: 9px 12px; background: white; }
-button:hover:not(:disabled) { background: #edf3fc; }
-button:disabled { opacity: .5; cursor: not-allowed; }
-button.primary { background: #275fda; border-color: #275fda; color: white; }
-button.primary:hover:not(:disabled) { background: #1c4cad; }
-input { padding: 10px 12px; border: 1px solid #ccd4e1; border-radius: 9px; width: 100%; }
+.shell button, .shell input, .shell select, .topbar button { font: inherit; }
+.shell .button, .topbar button { cursor: pointer; border: 1px solid #d4daea; border-radius: 9px; padding: 9px 12px; background: white; }
+.shell .button:hover:not(:disabled), .topbar button:hover:not(:disabled) { background: #edf3fc; }
+.shell button:disabled, .topbar button:disabled { opacity: .5; cursor: not-allowed; }
+.shell .primary, .topbar button.primary { background: #275fda; border-color: #275fda; color: white; }
+.shell .primary:hover:not(:disabled), .topbar button.primary:hover:not(:disabled) { background: #1c4cad; }
+.shell .field { padding: 10px 12px; border: 1px solid #ccd4e1; border-radius: 9px; }
 .layout { height: 100dvh; display: flex; flex-direction: column; }
 .topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; background: white; border-bottom: 1px solid #e3e6ee; padding: 10px 15px; z-index: 4; }
 .topbar strong { margin-right: 8px; }
@@ -26,3 +29,23 @@ input { padding: 10px 12px; border: 1px solid #ccd4e1; border-radius: 9px; width
 .panel p { color: #56667b; line-height: 1.5; }
 .editor .excalidraw { --color-primary: #275fda; }
 @media (max-width: 700px) { .topbar { gap: 6px; padding: 8px; } .topbar button { padding: 7px; } }
+
+@layer base {
+  .shell h1, .shell h2, .shell p { margin: 0; }
+  .shell button, .shell input, .shell select { font: inherit; }
+  .shell * { border-style: solid; border-width: 0; }
+}
+.shell { line-height: 1.5; }
+.shell .button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 500; }
+.shell .field { background: white; color: #213047; font-size: 14px; }
+.shell .icon-button { display: inline-flex; align-items: center; justify-content: center; padding: 6px; border: 0; background: transparent; color: #64748b; border-radius: 6px; cursor: pointer; }
+.shell .menu-item { display: block; width: 100%; text-align: left; padding: 8px 12px; background: white; border: 0; cursor: pointer; border-radius: 4px; font-size: 14px; }
+.shell .menu-item:hover { background: #eff6ff; }
+.shell :focus-visible, .topbar :focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; }
+.shell .error { color: #b42318; font-size: 14px; margin-top: 16px; margin-bottom: 16px; }
+.modal { border: 1px solid #e2e8f0; border-radius: 14px; padding: 28px; max-width: 480px; width: calc(100% - 32px); color: #213047; }
+.modal::backdrop { background: #0f172a66; }
+.back-link { color: #315bcb; text-decoration: none; font-size: 14px; padding: 8px; }
+
+.shell .field[type="search"] { padding-left: 40px; }
+@media (prefers-reduced-motion: reduce) { .shell * { animation: none !important; transition: none !important; } }

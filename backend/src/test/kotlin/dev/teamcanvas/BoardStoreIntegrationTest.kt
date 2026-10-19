@@ -20,6 +20,9 @@ class BoardStoreIntegrationTest {
     private val schema = "test_" + UUID.randomUUID().toString().replace("-", "")
     private lateinit var dataSource: PGSimpleDataSource
     private lateinit var store: BoardStore
+    private lateinit var access: CanvasAccess
+    private lateinit var accounts: Accounts
+    private lateinit var catalog: CanvasCatalog
     private lateinit var rounds: RoundService
 
     @BeforeAll
@@ -35,6 +38,9 @@ class BoardStoreIntegrationTest {
         val repository = BoardRepository(dataSource)
         store = BoardStore(repository, json)
         rounds = RoundService(repository)
+        accounts = Accounts(repository)
+        access = CanvasAccess(repository, accounts)
+        catalog = CanvasCatalog(repository, accounts, access)
     }
 
     @AfterAll
@@ -52,17 +58,34 @@ class BoardStoreIntegrationTest {
         val host: Participant,
         val guest: Participant,
         val guestToken: String,
+        val owner: LoginIdentity,
+        val visitor: LoginIdentity,
+        val inviteKey: String,
     )
 
+    private fun user(name: String = "User") =
+        LoginIdentity(
+            "https://identity.test/realm",
+            UUID.randomUUID().toString(),
+            UUID.randomUUID().toString(),
+            name,
+        )
+
     private fun room(): Room {
-        val board = store.create("Integration")
-        val host = store.join(board.id, JoinRequest("Host", hostKey = board.hostKey))
-        val guest = store.join(board.id, JoinRequest("Guest", inviteKey = board.inviteKey))
+        val owner = user("Host")
+        val visitor = user("Guest")
+        val board = access.create("Integration", owner)
+        val key = access.invite(board.id, owner).getValue("inviteKey")
+        val host = access.join(board.id, JoinRequest(), owner)
+        val guest = access.join(board.id, JoinRequest(key), visitor)
         return Room(
             board,
-            store.authenticate(board.id, host.token),
-            store.authenticate(board.id, guest.token),
+            access.authenticate(board.id, host.token, owner),
+            access.authenticate(board.id, guest.token, visitor),
             guest.token,
+            owner,
+            visitor,
+            key,
         )
     }
 
@@ -138,8 +161,9 @@ class BoardStoreIntegrationTest {
     fun `late arrivals are excluded and cancelling never publishes private content`() {
         val room = room()
         rounds.start(room.host, context(room.host), setOf(room.host.id, room.guest.id))
-        val late = store.join(room.board.id, JoinRequest("Late", inviteKey = room.board.inviteKey))
-        val lateWho = store.authenticate(room.board.id, late.token)
+        val identity = user("Late")
+        val late = access.join(room.board.id, JoinRequest(room.inviteKey), identity)
+        val lateWho = access.authenticate(room.board.id, late.token, identity)
         assertFalse(store.snapshot(lateWho).round!!.included)
         error("locked") {
             store.patch(lateWho, context(lateWho), listOf(shape("late")), emptyMap())
@@ -198,23 +222,133 @@ class BoardStoreIntegrationTest {
     }
 
     @Test
-    fun `invitations and subject binding prevent board ID only access and token reuse by another user`() {
-        val board = store.create("Company", "alice")
-        error("forbidden") { store.join(board.id, JoinRequest("Uninvited"), "bob") }
-        error("forbidden") {
-            store.join(board.id, JoinRequest("Host", hostKey = board.hostKey), "bob")
+    fun `invitations bind sessions to issuer subject and login while durable membership survives logout`() {
+        val room = room()
+        val outsider = user()
+        error("not_found") { access.join(room.board.id, JoinRequest(), outsider) }
+        error("unauthorized") { access.authenticate(room.board.id, room.guestToken, room.owner) }
+        error("unauthorized") {
+            access.authenticate(
+                room.board.id,
+                room.guestToken,
+                room.visitor.copy(issuer = "https://other.test"),
+            )
         }
-        val host = store.join(board.id, JoinRequest("Host", hostKey = board.hostKey), "alice")
-        val guest = store.join(board.id, JoinRequest("Guest", inviteKey = board.inviteKey), "bob")
-        error("unauthorized") { store.authenticate(board.id, guest.token, "alice") }
-        val newKey = store.rotateInvitation(store.authenticate(board.id, host.token, "alice"), true)
-        error("unauthorized") { store.authenticate(board.id, guest.token, "bob") }
-        error("forbidden") {
-            store.join(board.id, JoinRequest("Old invite", inviteKey = board.inviteKey), "charlie")
-        }
-        assertNotNull(
-            store.join(board.id, JoinRequest("New invite", inviteKey = newKey), "charlie")
+        val secondLogin = room.visitor.copy(sid = UUID.randomUUID().toString())
+        val second = access.join(room.board.id, JoinRequest(), secondLogin)
+        assertEquals(room.guest.id, second.participantId)
+        accounts.logout(room.visitor)
+        error("unauthorized") { access.authenticate(room.board.id, room.guestToken, room.visitor) }
+        error("unauthorized") { accounts.current(room.visitor) }
+        assertEquals(
+            room.guest.id,
+            access.authenticate(room.board.id, second.token, secondLogin).id,
         )
+        assertEquals(
+            room.board.id,
+            catalog.list(secondLogin, "shared", "", "recent", 24, null).items.single().id,
+        )
+        error("not_found") { access.invite(room.board.id, outsider) }
+        error("not_found") { catalog.rename(room.board.id, "Attack", outsider) }
+        access.revoke(room.board.id, room.owner, true)
+        error("unauthorized") { access.authenticate(room.board.id, second.token, secondLogin) }
+        error("not_found") { access.join(room.board.id, JoinRequest(room.inviteKey), outsider) }
+        val newKey = access.invite(room.board.id, room.owner).getValue("inviteKey")
+        assertEquals(
+            room.guest.id,
+            access.join(room.board.id, JoinRequest(newKey), secondLogin).participantId,
+        )
+    }
+
+    @Test
+    fun `multiple tabs and invitations preserve stable memberships and poker drafts`() {
+        val room = room()
+        val anotherKey = access.invite(room.board.id, room.owner).getValue("inviteKey")
+        assertNotNull(access.preview(room.board.id, room.inviteKey, room.visitor))
+        assertNotNull(access.preview(room.board.id, anotherKey, room.visitor))
+        rounds.start(room.host, context(room.host), setOf(room.host.id, room.guest.id))
+        store.patch(room.guest, context(room.guest), listOf(shape("private")), emptyMap())
+        val tab = access.join(room.board.id, JoinRequest(), room.visitor)
+        assertEquals(room.guest.id, tab.participantId)
+        assertNotEquals(room.guestToken, tab.token)
+        assertEquals(
+            1,
+            store
+                .snapshot(access.authenticate(room.board.id, tab.token, room.visitor))
+                .elements
+                .size,
+        )
+        assertEquals(2, store.snapshot(room.host).round!!.members.size)
+        assertTrue(store.snapshot(room.host).elements.isEmpty())
+        access.revoke(room.board.id, room.owner, false)
+        assertNotNull(access.authenticate(room.board.id, tab.token, room.visitor))
+        error("not_found") { access.preview(room.board.id, anotherKey, room.visitor) }
+    }
+
+    @Test
+    fun `concurrent joins deduplicate identity and catalog pagination remains scoped`() {
+        val owner = user()
+        repeat(3) { access.create("Same", owner) }
+        val first = catalog.list(owner, "mine", "Same", "name", 2, null)
+        val second = catalog.list(owner, "mine", "Same", "name", 2, first.nextCursor)
+        assertEquals(3, (first.items + second.items).map { it.id }.toSet().size)
+        assertTrue(catalog.list(user(), "all", "", "recent", 24, null).items.isEmpty())
+        error("bad_request") { catalog.list(user(), "mine", "Same", "name", 2, first.nextCursor) }
+        val board = first.items.first()
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val a = executor.submit<JoinedBoard> { access.join(board.id, JoinRequest(), owner) }
+            val b = executor.submit<JoinedBoard> { access.join(board.id, JoinRequest(), owner) }
+            assertEquals(a.get().participantId, b.get().participantId)
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `session expiry does not revoke membership or another tab and old canvases stay hidden`() {
+        val room = room()
+        val tab = access.join(room.board.id, JoinRequest(), room.visitor)
+        dataSource.connection.use { c ->
+            c.update(
+                "UPDATE board_sessions SET expires_at=now()-interval '1 second' WHERE token_hash=?",
+                Security.hash(room.guestToken),
+            )
+            c.update(
+                "INSERT INTO boards(id,name,host_key_hash) VALUES(?,?,?)",
+                UUID.randomUUID(),
+                "Legacy",
+                Security.hash("old-key"),
+            )
+        }
+        error("unauthorized") { access.authenticate(room.board.id, room.guestToken, room.visitor) }
+        assertEquals(room.guest.id, access.authenticate(room.board.id, tab.token, room.visitor).id)
+        assertEquals(
+            listOf(room.board.id),
+            catalog.list(room.visitor, "all", "", "recent", 24, null).items.map { it.id },
+        )
+        assertEquals(
+            room.guest.id,
+            access.join(room.board.id, JoinRequest(), room.visitor).participantId,
+        )
+    }
+
+    @Test
+    fun `simultaneous first logins create one local account`() {
+        val identity = user()
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val first = executor.submit<Account> { accounts.current(identity) }
+            val second =
+                executor.submit<Account> { accounts.current(identity.copy(sid = "second")) }
+            assertEquals(first.get().id, second.get().id)
+            assertNotEquals(
+                first.get().id,
+                accounts.current(identity.copy(issuer = "https://other.test/realm")).id,
+            )
+        } finally {
+            executor.shutdownNow()
+        }
     }
 
     @Test

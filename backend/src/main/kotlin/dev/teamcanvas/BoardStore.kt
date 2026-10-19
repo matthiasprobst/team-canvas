@@ -12,165 +12,6 @@ import java.util.UUID
 class BoardStore
 @Inject
 constructor(private val repository: BoardRepository, private val json: ObjectMapper) {
-    fun create(rawName: String, subject: String? = null): CreatedBoard =
-        repository.transaction { connection ->
-            val id = UUID.randomUUID()
-            val hostKey = Security.token()
-            val inviteKey = Security.token()
-            connection
-                .prepareStatement(
-                    "INSERT INTO boards(id,name,host_key_hash,invite_key_hash,owner_subject) VALUES(?,?,?,?,?)"
-                )
-                .use {
-                    it.setObject(1, id)
-                    it.setString(2, rawName.trim().ifEmpty { "Neues Board" }.take(120))
-                    it.setString(3, Security.hash(hostKey))
-                    it.setString(4, Security.hash(inviteKey))
-                    it.setString(5, subject)
-                    it.executeUpdate()
-                }
-            CreatedBoard(id, hostKey, inviteKey)
-        }
-
-    fun join(id: UUID, request: JoinRequest, subject: String? = null): JoinedBoard =
-        repository.transaction { connection ->
-            repository.board(connection, id)
-            if (request.token != null) {
-                val existing =
-                    findParticipant(connection, id, request.token, subject)
-                        ?: throw ClientException(
-                            "unauthorized",
-                            "Zugang abgelaufen oder widerrufen",
-                        )
-                return@transaction JoinedBoard(id, existing.id, existing.role, request.token)
-            }
-            val keys =
-                connection
-                    .prepareStatement(
-                        "SELECT host_key_hash,invite_key_hash,owner_subject FROM boards WHERE id=?"
-                    )
-                    .use {
-                        it.setObject(1, id)
-                        it.executeQuery().use { rows ->
-                            rows.next()
-                            Triple(rows.getString(1), rows.getString(2), rows.getString(3))
-                        }
-                    }
-            val host =
-                validKey(request.hostKey, keys.first) &&
-                    (keys.third == null || keys.third == subject)
-            val existing =
-                if (subject == null) null
-                else
-                    connection
-                        .prepareStatement(
-                            "SELECT id,name,role FROM participants WHERE board_id=? AND subject=? AND revoked=false ORDER BY created_at LIMIT 1"
-                        )
-                        .use {
-                            it.setObject(1, id)
-                            it.setString(2, subject)
-                            it.executeQuery().use { rows ->
-                                if (rows.next())
-                                    Participant(
-                                        rows.getObject(1, UUID::class.java),
-                                        id,
-                                        rows.getString(2),
-                                        rows.getString(3),
-                                        subject,
-                                    )
-                                else null
-                            }
-                        }
-            if (!host && existing == null && !validKey(request.inviteKey, keys.second))
-                throw ClientException("forbidden", "Eine gültige Einladung ist erforderlich")
-            val name = request.name.trim()
-            if (name.isEmpty() || name.length > 48)
-                throw ClientException("invalid_name", "Name muss 1–48 Zeichen lang sein")
-            val count =
-                connection
-                    .prepareStatement("SELECT count(*) FROM participants WHERE board_id=?")
-                    .use {
-                        it.setObject(1, id)
-                        it.executeQuery().use { rows ->
-                            rows.next()
-                            rows.getInt(1)
-                        }
-                    }
-            if (existing == null && count >= 200)
-                throw ClientException("limit", "Teilnehmerlimit erreicht")
-            val participantId = existing?.id ?: UUID.randomUUID()
-            val role = if (host) "host" else existing?.role ?: "guest"
-            val token = Security.token()
-            connection
-                .prepareStatement(
-                    """
-                    INSERT INTO participants(id,board_id,name,role,token_hash,subject) VALUES(?,?,?,?,?,?)
-                    ON CONFLICT(id) DO UPDATE SET token_hash=EXCLUDED.token_hash,expires_at=now()+interval '1 day',role=EXCLUDED.role
-                    """
-                        .trimIndent()
-                )
-                .use {
-                    it.setObject(1, participantId)
-                    it.setObject(2, id)
-                    it.setString(3, name)
-                    it.setString(4, role)
-                    it.setString(5, Security.hash(token))
-                    it.setString(6, subject)
-                    it.executeUpdate()
-                }
-            if (host && subject != null && keys.third == null)
-                connection.prepareStatement("UPDATE boards SET owner_subject=? WHERE id=?").use {
-                    it.setString(1, subject)
-                    it.setObject(2, id)
-                    it.executeUpdate()
-                }
-            JoinedBoard(id, participantId, role, token)
-        }
-
-    private fun validKey(value: String?, hash: String?): Boolean =
-        value != null &&
-            value.length in 32..128 &&
-            hash != null &&
-            Security.equalHashes(Security.hash(value), hash)
-
-    private fun findParticipant(
-        connection: Connection,
-        id: UUID,
-        token: String,
-        subject: String?,
-    ): Participant? {
-        if (token.length !in 32..128) return null
-        return connection
-            .prepareStatement(
-                """
-                SELECT id,name,role,subject FROM participants WHERE board_id=? AND token_hash=?
-                AND revoked=false AND expires_at>now()
-                """
-                    .trimIndent()
-            )
-            .use {
-                it.setObject(1, id)
-                it.setString(2, Security.hash(token))
-                it.executeQuery().use { rows ->
-                    if (!rows.next() || rows.getString("subject") != subject) null
-                    else
-                        Participant(
-                            rows.getObject("id", UUID::class.java),
-                            id,
-                            rows.getString("name"),
-                            rows.getString("role"),
-                            subject,
-                        )
-                }
-            }
-    }
-
-    fun authenticate(id: UUID, token: String, subject: String? = null): Participant =
-        repository.transaction {
-            findParticipant(it, id, token, subject)
-                ?: throw ClientException("unauthorized", "Zugang abgelaufen oder widerrufen")
-        }
-
     fun snapshot(who: Participant): SceneSnapshot =
         repository.command(who) { connection, state ->
             val rows =
@@ -245,7 +86,7 @@ constructor(private val repository: BoardRepository, private val json: ObjectMap
                     it.setObject(3, who.id)
                     it.setObject(4, state.roundId)
                     it.executeQuery().use { rows ->
-                        if (!rows.next()) throw ClientException("not_found", "Bild nicht verfügbar")
+                        if (!rows.next()) throw ClientException("not_found", "Image not available.")
                         ElementValidation.validateFiles(
                                 json
                                     .createObjectNode()
@@ -271,7 +112,7 @@ constructor(private val repository: BoardRepository, private val json: ObjectMap
             if (scope == "private") {
                 val round = repository.round(connection, state, who)
                 if (round == null || !round.included || round.done)
-                    throw ClientException("locked", "Dein Beitrag ist gesperrt")
+                    throw ClientException("locked", "Your contribution is locked.")
             }
             val existingElements = sizes(connection, "elements", who.boardId)
             val existingAssets = sizes(connection, "assets", who.boardId)
@@ -279,7 +120,7 @@ constructor(private val repository: BoardRepository, private val json: ObjectMap
                 existingElements.keys.plus(elements.map { it.path("id").asText() }).size > 4000 ||
                     existingAssets.keys.plus(files.keys).size > 150
             )
-                throw ClientException("limit", "Board-Limit erreicht")
+                throw ClientException("limit", "Canvas element limit reached.")
             val sceneBytes =
                 existingElements
                     .toMutableMap()
@@ -302,7 +143,7 @@ constructor(private val repository: BoardRepository, private val json: ObjectMap
                     .values
                     .sum()
             if (sceneBytes > 4_000_000 || fileBytes > 32_000_000)
-                throw ClientException("limit", "Speicherlimit des Boards erreicht")
+                throw ClientException("limit", "Canvas storage limit reached.")
             if (
                 files.keys.any { id ->
                     elements.none {
@@ -312,7 +153,7 @@ constructor(private val repository: BoardRepository, private val json: ObjectMap
                     }
                 }
             )
-                throw ClientException("invalid_file", "Bild ohne zugehöriges Element")
+                throw ClientException("invalid_file", "Image has no associated element.")
             for (element in elements) {
                 val id = element.path("id").asText()
                 requireOwnership(connection, "elements", who, id, scope, state.roundId)
@@ -343,7 +184,7 @@ constructor(private val repository: BoardRepository, private val json: ObjectMap
                         previous.path("dataURL") != file.path("dataURL") ||
                             previous.path("mimeType") != file.path("mimeType")
                     )
-                        throw ClientException("invalid_file", "Bilddaten sind unveränderlich")
+                        throw ClientException("invalid_file", "Image data cannot be changed.")
                 } else save(connection, "assets", who, id, file, scope, state.roundId)
             }
             for (element in elements) save(
@@ -401,7 +242,7 @@ constructor(private val repository: BoardRepository, private val json: ObjectMap
                                     (rows.getObject(2, UUID::class.java) != who.id ||
                                         rows.getObject(3, UUID::class.java) != roundId)))
                     )
-                        throw ClientException("forbidden", "Dieses Objekt darfst du nicht ändern")
+                        throw ClientException("forbidden", "You cannot change this object.")
                 }
             }
     }
@@ -429,7 +270,7 @@ constructor(private val repository: BoardRepository, private val json: ObjectMap
                     it.executeQuery().use { rows -> rows.next() }
                 }
         if (!accessible)
-            throw ClientException("invalid_file", "Bilddaten fehlen oder sind nicht freigegeben")
+            throw ClientException("invalid_file", "Image data is missing or private.")
     }
 
     private fun save(
@@ -458,26 +299,4 @@ constructor(private val repository: BoardRepository, private val json: ObjectMap
             }
     }
 
-    fun rotateInvitation(who: Participant, revokeGuests: Boolean): String =
-        repository.command(who) { connection, state ->
-            RoundRules.requireHost(who)
-            if (state.mode != "standard")
-                throw ClientException("invalid_state", "Bitte zuerst die Runde beenden")
-            val key = Security.token()
-            connection.prepareStatement("UPDATE boards SET invite_key_hash=? WHERE id=?").use {
-                it.setString(1, Security.hash(key))
-                it.setObject(2, who.boardId)
-                it.executeUpdate()
-            }
-            if (revokeGuests)
-                connection
-                    .prepareStatement(
-                        "UPDATE participants SET revoked=true WHERE board_id=? AND role='guest'"
-                    )
-                    .use {
-                        it.setObject(1, who.boardId)
-                        it.executeUpdate()
-                    }
-            key
-        }
 }

@@ -10,18 +10,24 @@
     "preview": "vite preview --host 0.0.0.0",
     "predev": "node scripts/copy-fonts.mjs",
     "prebuild": "node scripts/copy-fonts.mjs",
-    "test:sync": "tsc --target es2022 --module commonjs --moduleResolution node --skipLibCheck --outDir ../.test-build src/protocol.ts src/protocolCodec.ts src/syncCore.ts src/syncSession.ts && node --test ../tests/*.test.mjs"
+    "test:sync": "tsc --target es2022 --module commonjs --moduleResolution node --skipLibCheck --outDir ../.test-build src/protocol.ts src/protocolCodec.ts src/syncCore.ts src/syncSession.ts && node --test ../tests/*.test.mjs",
+    "test:e2e": "playwright test --config ../tests/browser/playwright.config.mjs"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "0.18.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "lucide-react": "^1.59.0",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "react-router-dom": "^7.18.4",
+    "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.7.0",
     "typescript": "~5.9.2",
-    "vite": "^6.3.5"
+    "vite": "^6.3.5",
+    "playwright": "1.56.1"
   }
 }

@@ -1,6 +1,15 @@
 import type { BoardCommand, ControlType, ElementData, Files, ServerEvent, Snapshot } from "./protocol";
 import { elementFingerprint, indexById, mergeById, normalizeElement, restoreLockedPublic } from "./syncCore";
 
+// getRandomValues is also available on development HTTP origins in a private network.
+function commandId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 type Flight = { command: BoardCommand; accepted: boolean; dispatchedAt: number; retryAfter: number | null };
 export interface SessionView {
   snapshot: Snapshot | null;
@@ -30,7 +39,7 @@ export class SyncSession {
   constructor(
     private readonly send: (packet: object) => boolean,
     private readonly changed: (view: SessionView) => void,
-    private readonly createId: () => string = () => crypto.randomUUID(),
+    private readonly createId: () => string = commandId,
     private readonly clock: () => number = () => Date.now(),
   ) {}
 
@@ -50,7 +59,7 @@ export class SyncSession {
 
   private emit() { this.changed(this.view()); }
 
-  disconnected(message = "Verbindung unterbrochen. Änderungen bleiben bis zur Wiederverbindung vorgemerkt.") {
+  disconnected(message = "Connection lost. Changes are kept locally until you reconnect.") {
     this.online = false;
     this.error = message;
     this.emit();
@@ -118,7 +127,7 @@ export class SyncSession {
         bytes += size;
       }
       if (!elements.length) {
-        this.error = "Ein Bild ist noch nicht bereit oder eine Änderung ist zu groß. Bitte Bildgröße prüfen.";
+        this.error = "An image is not ready or a change is too large. Please check the image size.";
         this.action = null;
         this.emit();
         return;
@@ -154,11 +163,14 @@ export class SyncSession {
     this.flight = null;
     this.action = null;
     this.awaitingState = false;
-    if (this.recovery.length) this.error = "Die Runde hat sich geändert. Nicht bestätigte Änderungen sind als Entwurf zum Download gesichert.";
+    if (this.recovery.length) this.error = "The round changed. Unconfirmed changes are available as a draft download.";
   }
 
   receive(event: ServerEvent) {
     switch (event.type) {
+      case "metadata":
+        if (this.snapshot) this.snapshot = { ...this.snapshot, board: { ...this.snapshot.board, name: event.name } };
+        break;
       case "snapshot": {
         const previous = this.snapshot;
         const changedRound = previous && previous.board.epoch !== event.data.board.epoch;
@@ -211,7 +223,7 @@ export class SyncSession {
           if (event.code === "rate_limit") this.flight.retryAfter = this.clock() + 1200;
           else {
             this.preserveDraft();
-            this.error = event.message + (this.recovery.length ? " Nicht bestätigte Änderungen stehen als Entwurf zum Download bereit." : "");
+            this.error = event.message + (this.recovery.length ? " Unconfirmed changes are available as a draft download." : "");
           }
           if (event.code === "stale_round") this.send({ type: "resync" });
         }

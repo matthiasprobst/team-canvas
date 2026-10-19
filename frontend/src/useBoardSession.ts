@@ -7,6 +7,8 @@ import { parseServerEvent } from "./protocolCodec";
 import { elementFingerprint } from "./syncCore";
 import type { ControlType, ElementData, Files, Presence, ServerEvent } from "./protocol";
 
+let previousSocketClosed: Promise<void> = Promise.resolve();
+
 const initialView: SessionView = { snapshot: null, elements: [], files: {}, online: false, busy: false, unsaved: false, recovery: [], error: "" };
 
 export function useBoardSession(boardId: string, identity: Identity) {
@@ -77,7 +79,8 @@ export function useBoardSession(boardId: string, identity: Identity) {
     let retry: ReturnType<typeof setTimeout> | undefined;
     let failures = 0;
     let lastMessageAt = Date.now();
-    function connect() {
+    async function connect() {
+      await previousSocketClosed;
       if (stopped) return;
       const protocol = location.protocol === "https:" ? "wss:" : "ws:";
       const socket = new WebSocket(`${protocol}//${location.host}/ws/boards/${boardId}`);
@@ -104,13 +107,13 @@ export function useBoardSession(boardId: string, identity: Identity) {
       });
       socket.addEventListener("close", event => {
         if (stopped || socketRef.current !== socket) return;
-        controller.disconnected(rejectionMessage ?? (event.code === 1008 ? "Zugang abgelaufen, widerrufen oder Raum voll. Bitte erneut beitreten." : undefined));
+        controller.disconnected(rejectionMessage ?? (event.code === 1008 ? "Access expired, was revoked, or the room is full. Please rejoin." : undefined));
         if (event.code === 1008 || event.code === 1006) void checkCompanySession().catch(() => {});
         if (event.code !== 1008) retry = setTimeout(connect, Math.min(15_000, 1000 * 2 ** failures++) + Math.random() * 400);
       });
       socket.addEventListener("error", () => socket.close());
     }
-    connect();
+    void connect();
     const flush = setInterval(() => controller.flush(), 110);
     const heartbeat = setInterval(() => {
       const socket = socketRef.current;
@@ -119,7 +122,7 @@ export function useBoardSession(boardId: string, identity: Identity) {
       else socket.send(JSON.stringify({ type: "ping" }));
     }, 15_000);
     const unload = (event: BeforeUnloadEvent) => {
-      if (controller.view().unsaved || controller.view().recovery.length) { event.preventDefault(); event.returnValue = ""; }
+      if (controller.view().unsaved || controller.view().busy || controller.view().recovery.length || (controller.view().snapshot?.round?.included && !controller.view().snapshot?.round?.done)) { event.preventDefault(); event.returnValue = ""; }
     };
     window.addEventListener("beforeunload", unload);
     return () => {
@@ -128,7 +131,11 @@ export function useBoardSession(boardId: string, identity: Identity) {
       clearInterval(flush);
       clearInterval(heartbeat);
       window.removeEventListener("beforeunload", unload);
-      socketRef.current?.close();
+      const socket = socketRef.current;
+      if (socket && socket.readyState !== WebSocket.CLOSED) {
+        previousSocketClosed = new Promise(resolve => socket.addEventListener("close", () => resolve(), { once: true }));
+        socket.close();
+      }
       socketRef.current = null;
     };
   }, [boardId, identity.token, controller, updateCursors]);
@@ -148,7 +155,7 @@ export function useBoardSession(boardId: string, identity: Identity) {
           const file = await fetchAsset(boardId, id, identity.token, abort.signal);
           if (!abort.signal.aborted) loaded[id] = file;
         } catch (error) {
-          if (!abort.signal.aborted) setView(current => ({ ...current, error: error instanceof Error ? error.message : "Bild konnte nicht geladen werden" }));
+          if (!abort.signal.aborted) setView(current => ({ ...current, error: error instanceof Error ? error.message : "Could not load image." }));
         }
       }
     }

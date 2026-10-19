@@ -56,7 +56,7 @@ class SingleWriterGuard @Inject constructor(private val dataSource: DataSource) 
 
     fun requireOwner() {
         if (!ownsDatabase())
-            throw ClientException("unavailable", "Backend vorübergehend nicht verfügbar")
+            throw ClientException("unavailable", "The server is temporarily unavailable.")
     }
 
     @PreDestroy

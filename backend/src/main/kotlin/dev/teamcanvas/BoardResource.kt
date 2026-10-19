@@ -16,19 +16,36 @@ class BoardResource
 @Inject
 constructor(
     private val store: BoardStore,
-    private val access: AccessPolicy,
+    private val access: CanvasAccess,
+    private val catalog: CanvasCatalog,
     private val hub: RoomHub,
 ) {
     @Context lateinit var security: SecurityContext
 
-    @POST
-    fun create(body: CreateBoardRequest): CreatedBoard =
-        store.create(body.name, access.subject(security.userPrincipal))
+    private fun identity() = loginIdentity(security.userPrincipal)
+
+    @POST fun create(body: CreateBoardRequest): CreatedBoard = access.create(body.name, identity())
+
+    @GET
+    fun list(
+        @QueryParam("filter") @DefaultValue("all") filter: String,
+        @QueryParam("q") @DefaultValue("") query: String,
+        @QueryParam("sort") @DefaultValue("recent") sort: String,
+        @QueryParam("limit") @DefaultValue("24") limit: Int,
+        @QueryParam("cursor") cursor: String?,
+    ): CanvasPage = catalog.list(identity(), filter, query, sort, limit, cursor)
 
     @POST
     @Path("/{id}/join")
     fun join(@PathParam("id") raw: String, body: JoinRequest): JoinedBoard =
-        store.join(boardId(raw), body, access.subject(security.userPrincipal))
+        access.join(boardId(raw), body, identity())
+
+    @PATCH
+    @Path("/{id}")
+    fun rename(@PathParam("id") raw: String, body: CreateBoardRequest): Map<String, String> {
+        val id = boardId(raw)
+        return mapOf("name" to hub.rename(id) { catalog.rename(id, body.name, identity()) })
+    }
 
     @GET
     @Path("/{id}/assets/{assetId}")
@@ -37,30 +54,37 @@ constructor(
         @PathParam("assetId") assetId: String,
         @HeaderParam("X-Board-Token") token: String?,
     ): Response {
-        val who =
-            store.authenticate(boardId(raw), token ?: "", access.subject(security.userPrincipal))
+        val who = access.authenticate(boardId(raw), token ?: "", identity())
         return Response.ok(store.asset(who, assetId))
             .header("Cache-Control", "private, no-store")
             .build()
     }
 
-    data class RotateInvitationRequest(val token: String, val revokeGuests: Boolean = false)
-
     @POST
     @Path("/{id}/invitations")
-    fun rotate(@PathParam("id") raw: String, body: RotateInvitationRequest): Map<String, String> {
-        val who =
-            store.authenticate(boardId(raw), body.token, access.subject(security.userPrincipal))
-        val key = store.rotateInvitation(who, body.revokeGuests)
-        if (body.revokeGuests) hub.disconnectGuests(who.boardId)
-        return mapOf("inviteKey" to key)
+    fun invite(@PathParam("id") raw: String): Map<String, String> =
+        access.invite(boardId(raw), identity())
+
+    @POST
+    @Path("/{id}/invitations/preview")
+    fun preview(@PathParam("id") raw: String, body: InvitationRequest): Map<String, String> =
+        access.preview(boardId(raw), body.inviteKey, identity())
+
+    data class RevokeRequest(val revokeMembers: Boolean = false)
+
+    @POST
+    @Path("/{id}/invitations/revoke")
+    fun revoke(@PathParam("id") raw: String, body: RevokeRequest): Response {
+        val id = boardId(raw)
+        hub.revoke(id, body.revokeMembers) { access.revoke(id, identity(), body.revokeMembers) }
+        return Response.noContent().build()
     }
 
     private fun boardId(value: String): UUID =
         try {
             UUID.fromString(value)
         } catch (_: IllegalArgumentException) {
-            throw ClientException("bad_request", "Ungültige Board-ID")
+            throw ClientException("bad_request", "Invalid canvas ID.")
         }
 }
 
@@ -74,15 +98,24 @@ class LoginResource {
     }
 }
 
-@Path("/api/session")
-class SessionResource @Inject constructor(private val access: AccessPolicy) {
+@Path("/api/me")
+class SessionResource @Inject constructor(private val accounts: Accounts) {
     @GET
     @Produces(MediaType.APPLICATION_JSON)
-    fun session(@Context security: SecurityContext): Map<String, Boolean> =
-        mapOf(
-            "authenticated" to (access.subject(security.userPrincipal) != null),
-            "authRequired" to access.authRequired,
-        )
+    fun me(@Context security: SecurityContext): Account =
+        accounts.current(loginIdentity(security.userPrincipal))
+}
+
+@Path("/api/logout")
+class LogoutResource @Inject constructor(private val accounts: Accounts, private val hub: RoomHub) {
+    @POST
+    @Produces(MediaType.APPLICATION_JSON)
+    fun logout(@Context security: SecurityContext): Map<String, String> {
+        val identity = loginIdentity(security.userPrincipal)
+        hub.disconnectLogin(identity)
+        accounts.logout(identity)
+        return mapOf("redirect" to "/api/oidc/logout")
+    }
 }
 
 @jakarta.ws.rs.ext.Provider
@@ -104,4 +137,15 @@ class ClientErrorMapper : jakarta.ws.rs.ext.ExceptionMapper<ClientException> {
             .type(MediaType.APPLICATION_JSON)
             .header("Cache-Control", "no-store")
             .build()
+}
+
+@jakarta.ws.rs.ext.Provider
+class PrivateResponseFilter : jakarta.ws.rs.container.ContainerResponseFilter {
+    override fun filter(
+        request: jakarta.ws.rs.container.ContainerRequestContext,
+        response: jakarta.ws.rs.container.ContainerResponseContext,
+    ) {
+        if (request.uriInfo.path.trimStart('/').startsWith("api/"))
+            response.headers.putSingle("Cache-Control", "no-store")
+    }
 }

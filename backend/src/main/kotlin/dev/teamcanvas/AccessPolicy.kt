@@ -1,39 +1,22 @@
 package dev.teamcanvas
 
-import io.vertx.core.http.HttpServerRequest
 import jakarta.enterprise.context.ApplicationScoped
 import jakarta.inject.Inject
 import jakarta.ws.rs.container.ContainerRequestContext
 import jakarta.ws.rs.container.ContainerRequestFilter
 import jakarta.ws.rs.ext.Provider
-import java.security.Principal
 import org.eclipse.microprofile.config.inject.ConfigProperty
 
 @ApplicationScoped
 class AccessPolicy {
-    @ConfigProperty(name = "team-canvas.auth-required", defaultValue = "true")
-    var authRequired: Boolean = true
-
     @ConfigProperty(
         name = "team-canvas.allowed-origins",
         defaultValue = "http://localhost:8088,http://localhost:5173",
     )
     lateinit var origins: String
 
-    fun subject(principal: Principal?): String? {
-        // Explicit local guest mode must not bind sessions to container-specific anonymous
-        // principals, which can differ between the HTTP join and WebSocket upgrade requests.
-        if (!authRequired) return null
-        val subject = principal?.name
-        if (subject.isNullOrBlank())
-            throw ClientException("unauthorized", "Bitte mit dem Firmenkonto anmelden")
-        if (subject.length > 512) throw ClientException("unauthorized", "Ungültige Identität")
-        return subject
-    }
-
     fun allowsOrigin(origin: String?): Boolean =
-        if (origin.isNullOrBlank()) !authRequired
-        else origins.split(',').map { it.trim() }.contains(origin)
+        if (origin.isNullOrBlank()) false else origins.split(',').map { it.trim() }.contains(origin)
 }
 
 /** Fixed windows with bounded cardinality; client input cannot grow this cache without bound. */
@@ -51,11 +34,11 @@ class RequestLimits {
             windows[key]?.takeIf { it.until > now }
                 ?: run {
                     if (windows.size >= 4096)
-                        throw ClientException("rate_limit", "Zu viele Anfragen")
+                        throw ClientException("rate_limit", "Too many requests.")
                     Window(now + durationMs, 0).also { windows[key] = it }
                 }
         if (window.count + weight > maximum)
-            throw ClientException("rate_limit", "Zu viele Anfragen. Bitte kurz warten.")
+            throw ClientException("rate_limit", "Too many requests. Please wait a moment.")
         window.count += weight
     }
 }
@@ -66,21 +49,26 @@ class RequestGuard
 constructor(
     private val policy: AccessPolicy,
     private val limits: RequestLimits,
-    private val request: HttpServerRequest,
     private val writer: SingleWriterGuard,
 ) : ContainerRequestFilter {
     override fun filter(context: ContainerRequestContext) {
-        if (!context.uriInfo.path.startsWith("api/boards")) return
+        val path = context.uriInfo.path.trimStart('/')
+        if (
+            path != "api/boards" &&
+                !path.startsWith("api/boards/") &&
+                path !in setOf("api/me", "api/logout")
+        )
+            return
         writer.requireOwner()
-        val subject = policy.subject(context.securityContext.userPrincipal)
+        val identity = loginIdentity(context.securityContext.userPrincipal)
         if (
             context.method !in setOf("GET", "HEAD", "OPTIONS") &&
                 !policy.allowsOrigin(context.getHeaderString("Origin"))
         )
-            throw ClientException("forbidden", "Anfrage von fremder Herkunft abgelehnt")
-        val client = subject ?: request.remoteAddress().host()
+            throw ClientException("forbidden", "Request from an untrusted origin rejected.")
+        val client = Security.hash(identity.issuer + "\n" + identity.subject)
         limits.require("http:$client", 240, 60_000)
-        if (context.method == "POST" && !context.uriInfo.path.endsWith("/invitations"))
+        if (context.method == "POST" && !path.endsWith("/invitations"))
             limits.require("join:$client", 30, 60_000)
     }
 }

@@ -20,6 +20,7 @@ export function parseServerEvent(text: string): ServerEvent {
   if (!object(value)) throw new Error("Invalid server event");
   let valid = false;
   switch (value.type) {
+    case "metadata": valid = typeof value.name === "string" && value.name.length > 0 && value.name.length <= 120; break;
     case "pong": valid = true; break;
     case "snapshot": {
       const data = value.data;

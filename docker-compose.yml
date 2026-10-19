@@ -16,6 +16,33 @@ services:
       timeout: 3s
       retries: 25
     networks: [internal]
+  # Development identity provider only. Production uses company-managed Keycloak.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.1
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: dev-admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${DEV_ADMIN_PASSWORD:-admin-dev-only}
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8180/auth}
+      KC_HEALTH_ENABLED: "true"
+      KC_HTTP_MANAGEMENT_RELATIVE_PATH: /
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:8088}
+      DEV_OIDC_CLIENT_SECRET: ${DEV_OIDC_CLIENT_SECRET:-development-only-client-secret}
+      DEV_ALICE_PASSWORD: ${DEV_ALICE_PASSWORD:-alice-dev-only}
+      DEV_BOB_PASSWORD: ${DEV_BOB_PASSWORD:-bob-dev-only}
+    volumes:
+      - keycloakdata:/opt/keycloak/data
+      - ./deploy/keycloak/team-canvas-realm.json:/opt/keycloak/data/import/team-canvas-realm.json:ro
+    ports:
+      - "${KEYCLOAK_BIND:-127.0.0.1}:${KEYCLOAK_HTTP_PORT:-8180}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9000; printf \"GET /health/ready HTTP/1.0\\r\\n\\r\\n\" >&3; cat <&3 | grep -q \"200 OK\"'"]
+      interval: 5s
+      timeout: 3s
+      start_period: 45s
+      retries: 30
+    networks: [internal]
   backend:
     build: ./backend
     restart: unless-stopped
@@ -23,12 +50,22 @@ services:
       DB_USER: ${DB_USER:-board}
       DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
       JDBC_URL: jdbc:postgresql://db:5432/board
-      # This Compose stack is local development. Kubernetes requires corporate OIDC.
-      TEAM_CANVAS_AUTH_REQUIRED: "false"
-      TEAM_CANVAS_HTTP_POLICY: permit
-      TEAM_CANVAS_ALLOWED_ORIGINS: http://localhost:${HTTP_PORT:-8088},http://127.0.0.1:${HTTP_PORT:-8088},http://localhost:5173
+      OIDC_ISSUER: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8180/auth}/realms/team-canvas
+      OIDC_CLIENT_ID: team-canvas
+      OIDC_CLIENT_SECRET: ${DEV_OIDC_CLIENT_SECRET:-development-only-client-secret}
+      OIDC_SESSION_SECRET: ${DEV_OIDC_SESSION_SECRET:-development-only-session-encryption-secret-change-me}
+      QUARKUS_OIDC_DISCOVERY_ENABLED: "false"
+      QUARKUS_OIDC_AUTHORIZATION_PATH: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8180/auth}/realms/team-canvas/protocol/openid-connect/auth
+      QUARKUS_OIDC_TOKEN_PATH: http://keycloak:8080/auth/realms/team-canvas/protocol/openid-connect/token
+      QUARKUS_OIDC_JWKS_PATH: http://keycloak:8080/auth/realms/team-canvas/protocol/openid-connect/certs
+      QUARKUS_OIDC_END_SESSION_PATH: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8180/auth}/realms/team-canvas/protocol/openid-connect/logout
+      QUARKUS_OIDC_AUTHENTICATION_COOKIE_FORCE_SECURE: "false"
+      TEAM_CANVAS_ALLOWED_ORIGINS: ${PUBLIC_ORIGIN:-http://localhost:8088}
+      # Backend has no published port; only the internal proxy can reach it.
+      TRUSTED_PROXIES: 0.0.0.0/0
     depends_on:
       db: {condition: service_healthy}
+      keycloak: {condition: service_healthy}
     networks: [internal]
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/q/health/ready"]
@@ -50,3 +87,4 @@ networks:
   internal: {}
 volumes:
   pgdata: {}
+  keycloakdata: {}
