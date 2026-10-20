@@ -39,6 +39,17 @@ data class Participant(
     val role: String,
     val subject: String?,
     val sessionHash: String = "",
+    val userId: UUID? = null,
+)
+
+data class CanvasAvatar(
+    val id: UUID,
+    val userId: UUID,
+    val name: String,
+    val avatarVersion: Long,
+    val hasAvatar: Boolean,
+    val x: Double,
+    val y: Double,
 )
 
 data class BoardState(
@@ -68,6 +79,7 @@ data class SceneSnapshot(
     val fileIds: List<String>,
     val participantId: UUID,
     val role: String,
+    val avatars: List<CanvasAvatar> = emptyList(),
 )
 
 data class CommandContext(val commandId: UUID, val epoch: Long, val roundId: UUID?)

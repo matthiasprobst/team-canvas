@@ -1,6 +1,6 @@
 import type { BinaryFile } from "./protocol";
 export interface Identity { id: string; participantId: string; role: "host" | "guest"; token: string }
-export interface Account { id: string; displayName: string }
+export interface Account { id: string; displayName: string; avatarVersion: number; hasAvatar: boolean }
 export type TemplateVisibility = "private" | "public";
 export interface Canvas { id: string; name: string; owner: Account; relationship: "owner" | "member"; createdAt: string; lastOpenedAt: string | null; templateVisibility?: TemplateVisibility | null; tags: string[] }
 export interface CanvasPage { items: Canvas[]; nextCursor: string | null }
@@ -18,6 +18,9 @@ export async function request<T>(path: string, body?: object, method = body ? "P
   return response.status === 204 ? undefined as T : response.json() as Promise<T>;
 }
 export const me = (signal?: AbortSignal) => request<Account>("/api/me", undefined, "GET", signal);
+export const uploadAvatar = (mimeType: string, dataURL: string) => request<void>("/api/me/avatar", { mimeType, dataURL }, "PUT");
+export const removeAvatar = () => request<void>("/api/me/avatar", undefined, "DELETE");
+export const avatarImageUrl = (userId: string, version: number) => `/api/users/${encodeURIComponent(userId)}/avatar?v=${version}`;
 export const createBoard = (name: string) => request<{ id: string; name: string }>("/api/boards", { name });
 export const joinBoard = (id: string, inviteKey?: string) => request<Identity>(`/api/boards/${id}/join`, { inviteKey });
 export const renameBoard = (id: string, name: string) => request<{ name: string }>(`/api/boards/${id}`, { name }, "PATCH");

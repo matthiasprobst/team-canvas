@@ -147,6 +147,35 @@ class SessionResource @Inject constructor(private val accounts: Accounts) {
         accounts.current(loginIdentity(security.userPrincipal))
 }
 
+@Path("/api/me/avatar")
+@Consumes(MediaType.APPLICATION_JSON)
+class ProfileAvatarResource @Inject constructor(private val avatars: CanvasAvatars, private val hub: RoomHub) {
+    @PUT
+    fun upload(@Context security: SecurityContext, body: AvatarUploadRequest): Response {
+        val identity = loginIdentity(security.userPrincipal)
+        hub.profileAvatarChanged(avatars.upload(identity, body))
+        return Response.noContent().build()
+    }
+
+    @DELETE
+    fun clear(@Context security: SecurityContext): Response {
+        val identity = loginIdentity(security.userPrincipal)
+        hub.profileAvatarChanged(avatars.clear(identity))
+        return Response.noContent().build()
+    }
+}
+
+@Path("/api/users/{id}/avatar")
+class UserAvatarResource @Inject constructor(private val avatars: CanvasAvatars) {
+    @GET
+    fun image(@PathParam("id") raw: String, @Context security: SecurityContext): Response {
+        val id = try { UUID.fromString(raw) } catch (_: IllegalArgumentException) { throw ClientException("not_found", "Avatar not found.") }
+        val image = avatars.image(loginIdentity(security.userPrincipal), id)
+            ?: throw ClientException("not_found", "Avatar not found.")
+        return Response.ok(image.first).type(image.second).header("Cache-Control", "private, no-store").build()
+    }
+}
+
 @Path("/api/logout")
 class LogoutResource @Inject constructor(private val accounts: Accounts, private val hub: RoomHub) {
     @POST

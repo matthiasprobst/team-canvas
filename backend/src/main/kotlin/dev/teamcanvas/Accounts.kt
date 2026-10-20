@@ -10,7 +10,7 @@ import org.eclipse.microprofile.jwt.JsonWebToken
 
 data class LoginIdentity(val issuer: String, val subject: String, val sid: String, val name: String)
 
-data class Account(val id: UUID, val displayName: String)
+data class Account(val id: UUID, val displayName: String, val avatarVersion: Long = 0, val hasAvatar: Boolean = false)
 
 /** Accept identities only from the JWT principal validated by Quarkus OIDC. */
 fun loginIdentity(principal: Principal?): LoginIdentity {
@@ -56,14 +56,14 @@ class Accounts @Inject constructor(private val repository: BoardRepository) {
                 connection.query(
                     """INSERT INTO app_users(id,issuer,subject,display_name) VALUES(?,?,?,?)
             ON CONFLICT(issuer,subject) DO UPDATE SET display_name=EXCLUDED.display_name,last_login_at=now()
-            RETURNING id,display_name""",
+                    RETURNING id,display_name,avatar_version,avatar_data IS NOT NULL""",
                     UUID.randomUUID(),
                     identity.issuer,
                     identity.subject,
                     identity.name,
                 ) { rows ->
                     rows.next()
-                    Account(rows.getObject(1, UUID::class.java), rows.getString(2))
+                    Account(rows.getObject(1, UUID::class.java), rows.getString(2), rows.getLong(3), rows.getBoolean(4))
                 }
             connection.update(
                 "INSERT INTO login_sessions(user_id,sid) VALUES(?,?) ON CONFLICT DO NOTHING",

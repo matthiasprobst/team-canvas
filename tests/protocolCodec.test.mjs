@@ -21,3 +21,10 @@ test('metadata events only accept a bounded canvas name', () => {
   assert.throws(() => parseServerEvent('{"type":"metadata","name":""}'));
   assert.throws(() => parseServerEvent(JSON.stringify({ type: 'metadata', name: 'x'.repeat(121) })));
 });
+
+test('avatar state events require bounded, finite marker data', () => {
+  const marker = { id: 'm1', userId: 'u1', name: 'Ada Lovelace', avatarVersion: 2, hasAvatar: true, x: 120, y: -40 };
+  assert.deepEqual(parseServerEvent(JSON.stringify({ type: 'avatar_state', avatars: [marker] })), { type: 'avatar_state', avatars: [marker] });
+  assert.throws(() => parseServerEvent(JSON.stringify({ type: 'avatar_state', avatars: [{ ...marker, x: Infinity }] })));
+  assert.throws(() => parseServerEvent(JSON.stringify({ type: 'avatar_state', avatars: [{ ...marker, avatarVersion: -1 }] })));
+});

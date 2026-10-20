@@ -96,7 +96,7 @@ constructor(private val repository: BoardRepository, private val accounts: Accou
             throw ClientException("unauthorized", "Canvas access expired or was revoked.")
         return repository.transaction { c ->
             c.query(
-                """SELECT p.id,p.name,CASE WHEN b.owner_user_id=p.user_id THEN 'host' ELSE 'guest' END FROM board_sessions s
+                """SELECT p.id,p.name,CASE WHEN b.owner_user_id=p.user_id THEN 'host' ELSE 'guest' END,p.user_id FROM board_sessions s
                 JOIN participants p ON p.id=s.participant_id AND p.user_id=s.user_id
                 JOIN boards b ON b.id=p.board_id
                 JOIN app_users u ON u.id=s.user_id
@@ -118,6 +118,7 @@ constructor(private val repository: BoardRepository, private val accounts: Accou
                     it.getString(3),
                     identity.subject,
                     Security.hash(token),
+                    it.getObject(4, UUID::class.java),
                 )
             }
         }

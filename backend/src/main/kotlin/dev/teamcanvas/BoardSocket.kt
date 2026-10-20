@@ -111,6 +111,7 @@ constructor(
     private val rounds: RoundService,
     private val json: ObjectMapper,
     private val access: CanvasAccess,
+    private val avatars: CanvasAvatars,
     private val limits: RequestLimits,
     private val writer: SingleWriterGuard,
     private val metrics: MeterRegistry,
@@ -132,6 +133,17 @@ constructor(
     }
 
     private fun lock(id: UUID) = locks[Math.floorMod(id.hashCode(), locks.size)]
+
+    fun profileAvatarChanged(userId: UUID) {
+        avatars.boardsForUser(userId).forEach { boardId ->
+            synchronized(lock(boardId)) {
+                if (modes[boardId] == "standard") {
+                    val event = mapOf("type" to "avatar_state", "avatars" to avatars.list(boardId))
+                    audience(boardId).forEach { send(it, event) }
+                }
+            }
+        }
+    }
 
     private fun audience(id: UUID) = peers.values.filter { it.participant?.boardId == id }
 
@@ -240,6 +252,16 @@ constructor(
                         throw ClientException("rate_limit", "Please wait a moment.")
                     peer.lastResyncAt = now
                     snapshot(peer)
+                    return@synchronized
+                }
+                if (type in setOf("avatar_place", "avatar_move", "avatar_remove")) {
+                    limits.require("writes:${session.id}", 20)
+                    val markers = when (type) {
+                        "avatar_place" -> avatars.place(who, packet.path("x").asDouble(Double.NaN), packet.path("y").asDouble(Double.NaN))
+                        "avatar_move" -> avatars.move(who, UUID.fromString(packet.path("id").asText()), packet.path("x").asDouble(Double.NaN), packet.path("y").asDouble(Double.NaN))
+                        else -> avatars.remove(who, UUID.fromString(packet.path("id").asText()))
+                    }
+                    audience(boardId).forEach { send(it, mapOf("type" to "avatar_state", "avatars" to markers)) }
                     return@synchronized
                 }
                 limits.require("writes:${session.id}", 20)
@@ -372,7 +394,9 @@ constructor(
     }
 
     private fun snapshot(peer: Peer) {
-        val data = store.snapshot(peer.participant!!)
+        val data = store.snapshot(peer.participant!!).let {
+            it.copy(avatars = if (it.board.mode == "standard") avatars.list(it.board.id) else emptyList())
+        }
         modes[data.board.id] = data.board.mode
         send(peer, mapOf("type" to "snapshot", "data" to data))
     }

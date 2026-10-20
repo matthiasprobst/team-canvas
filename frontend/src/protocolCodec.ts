@@ -5,6 +5,9 @@ const object = (value: unknown): value is ObjectValue => !!value && typeof value
 const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every(item => typeof item === "string");
 const integer = (value: unknown) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 const role = (value: unknown) => value === "host" || value === "guest";
+const avatars = (value: unknown) => Array.isArray(value) && value.length <= 1000 && value.every(marker =>
+  object(marker) && typeof marker.id === "string" && typeof marker.userId === "string" && typeof marker.name === "string" &&
+  integer(marker.avatarVersion) && typeof marker.hasAvatar === "boolean" && typeof marker.x === "number" && Number.isFinite(marker.x) && typeof marker.y === "number" && Number.isFinite(marker.y));
 const board = (value: unknown) => object(value) && typeof value.id === "string" && typeof value.name === "string" &&
   (value.mode === "standard" || value.mode === "poker") && (value.roundId === null || typeof value.roundId === "string") && integer(value.epoch) && integer(value.revision);
 const round = (value: unknown) => value === null || (object(value) && typeof value.id === "string" &&
@@ -25,7 +28,7 @@ export function parseServerEvent(text: string): ServerEvent {
     case "snapshot": {
       const data = value.data;
       valid = object(data) && board(data.board) && round(data.round) && elements(data.elements) && strings(data.publicIds) &&
-        strings(data.fileIds) && typeof data.participantId === "string" && role(data.role);
+        strings(data.fileIds) && typeof data.participantId === "string" && role(data.role) && avatars(data.avatars);
       break;
     }
     case "patch":
@@ -38,6 +41,7 @@ export function parseServerEvent(text: string): ServerEvent {
       object(person) && typeof person.id === "string" && typeof person.name === "string" && role(person.role)); break;
     case "cursor": valid = typeof value.id === "string" && typeof value.x === "number" && Number.isFinite(value.x) &&
       typeof value.y === "number" && Number.isFinite(value.y); break;
+    case "avatar_state": valid = avatars(value.avatars); break;
     case "error": valid = (value.commandId === null || typeof value.commandId === "string") &&
       typeof value.code === "string" && typeof value.message === "string"; break;
   }

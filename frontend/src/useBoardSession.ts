@@ -5,7 +5,7 @@ import { checkCompanySession, fetchAsset, type Identity } from "./api";
 import { SyncSession, type SessionView } from "./syncSession";
 import { parseServerEvent } from "./protocolCodec";
 import { elementFingerprint } from "./syncCore";
-import type { ControlType, ElementData, Files, Presence, ServerEvent } from "./protocol";
+import type { AvatarMarker, ControlType, ElementData, Files, Presence, ServerEvent } from "./protocol";
 
 let previousSocketClosed: Promise<void> = Promise.resolve();
 
@@ -14,6 +14,7 @@ const initialView: SessionView = { snapshot: null, elements: [], files: {}, onli
 export function useBoardSession(boardId: string, identity: Identity) {
   const [view, setView] = useState<SessionView>(initialView);
   const [people, setPeople] = useState<Presence[]>([]);
+  const [avatars, setAvatars] = useState<AvatarMarker[]>([]);
   const [deleted, setDeleted] = useState(false);
   const editorRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
@@ -104,11 +105,16 @@ export function useBoardSession(boardId: string, identity: Identity) {
           peopleRef.current = packet.participants;
           setPeople(packet.participants);
           updateCursors();
+        } else if (packet.type === "avatar_state") {
+          setAvatars(packet.avatars);
+        } else if (packet.type === "snapshot") {
+          failures = 0;
+          setAvatars(packet.data.avatars);
+          controller.receive(packet);
         } else if (packet.type === "cursor") {
           cursors.current.set(packet.id, { x: packet.x, y: packet.y });
           updateCursors();
         } else if (packet.type !== "pong") {
-          if (packet.type === "snapshot") failures = 0;
           controller.receive(packet);
         }
       });
@@ -192,6 +198,12 @@ export function useBoardSession(boardId: string, identity: Identity) {
   }, []);
 
   const control = useCallback((type: ControlType) => controller.control(type), [controller]);
+  const avatarAction = useCallback((type: "avatar_place" | "avatar_move" | "avatar_remove", data: object) => {
+    if (!viewRef.current.online || viewRef.current.snapshot?.board.mode !== "standard") return false;
+    const socket = socketRef.current;
+    if (socket?.readyState !== WebSocket.OPEN) return false;
+    try { socket.send(JSON.stringify({ type, ...data })); return true; } catch { return false; }
+  }, []);
   const recoveryExported = useCallback(() => controller.recoveryExported(), [controller]);
-  return { view, people, deleted, editorRef, onChange, setEditor, pointer, control, recoveryExported };
+  return { view, people, avatars, deleted, editorRef, onChange, setEditor, pointer, control, avatarAction, recoveryExported };
 }

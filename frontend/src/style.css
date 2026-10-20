@@ -12,6 +12,9 @@ body { margin: 0; background: #f5f7fb; }
 .shell .primary:hover:not(:disabled), .topbar button.primary:hover:not(:disabled) { background: #1c4cad; }
 .shell .button.danger { background: #b42318; border-color: #b42318; color: white; }
 .shell .button.danger:hover:not(:disabled) { background: #912018; }
+.shell .text-action { padding: 0; border: 0; background: transparent; color: #275fda; text-decoration: underline; cursor: pointer; }
+.shell .text-action.muted { color: #64748b; }
+.shell .text-action:disabled { cursor: wait; }
 .shell .field { padding: 10px 12px; border: 1px solid #ccd4e1; border-radius: 9px; }
 .layout { height: 100dvh; display: flex; flex-direction: column; }
 .topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; background: white; border-bottom: 1px solid #e3e6ee; padding: 10px 15px; z-index: 4; }
@@ -30,6 +33,16 @@ body { margin: 0; background: #f5f7fb; }
 .panel form { display: grid; gap: 12px; }
 .panel p { color: #56667b; line-height: 1.5; }
 .editor .excalidraw { --color-primary: #275fda; }
+.avatar-view { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; overflow: hidden; border-radius: 50%; background: #dce7fd; color: #244ca4; font-weight: 700; line-height: 1; }
+.avatar-view img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-layer { position: absolute; z-index: 2; inset: 0; pointer-events: none; }
+.placing-avatar .avatar-layer { pointer-events: auto; cursor: crosshair; }
+.canvas-avatar { position: absolute; transform: translate(-50%, -50%); pointer-events: auto; }
+.canvas-avatar-drag { display: block; width: 100%; height: 100%; padding: 0; border: 2px solid white; border-radius: 50%; background: white; box-shadow: 0 1px 6px #172b4d66; cursor: grab; touch-action: none; }
+.canvas-avatar-drag:active { cursor: grabbing; }
+.canvas-avatar-remove { position: absolute; top: -7px; right: -7px; display: none; width: 20px; height: 20px; padding: 0; border: 1px solid white; border-radius: 50%; background: #b42318; color: white; font: 14px/18px sans-serif; cursor: pointer; }
+.canvas-avatar:hover .canvas-avatar-remove, .canvas-avatar:focus-within .canvas-avatar-remove { display: block; }
+.avatar-place-catcher { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; padding: 0; background: transparent; cursor: crosshair; }
 @media (max-width: 700px) { .topbar { gap: 6px; padding: 8px; } .topbar button { padding: 7px; } }
 
 @layer base {

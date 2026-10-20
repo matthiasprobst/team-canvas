@@ -4,7 +4,7 @@ import { test, expect } from '../../frontend/node_modules/playwright/test.mjs';
 // dashboard.spec.mjs and smoke.mjs; no test-only authentication path exists in the app.
 const id = '00000000-0000-4000-8000-000000000001';
 async function fixture(page) {
-  const account = { id: 'account', displayName: 'Navigation test' };
+  const account = { id: 'account', displayName: 'Navigation test', avatarVersion: 0 };
   const packets = [];
   let socket;
   let closed = false;
@@ -21,7 +21,7 @@ async function fixture(page) {
       const packet = JSON.parse(String(raw));
       if (packet.type === 'hello') ws.send(JSON.stringify({ type: 'snapshot', data: {
         board: { id, name: 'Navigation canvas', mode: 'standard', roundId: null, epoch: 0, revision: 0 },
-        round: null, elements: [], publicIds: [], fileIds: [], participantId: 'member', role: 'host',
+        round: null, elements: [], publicIds: [], fileIds: [], participantId: 'member', role: 'host', avatars: [],
       } }));
       else if (packet.type === 'patch') packets.push(packet);
       else if (packet.type === 'ping') ws.send('{"type":"pong"}');

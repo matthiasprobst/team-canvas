@@ -29,6 +29,7 @@ export interface RoundState {
   draftRevision: number;
   members: RoundMember[];
 }
+export interface AvatarMarker { id: string; userId: string; name: string; avatarVersion: number; hasAvatar: boolean; x: number; y: number }
 export interface Snapshot {
   board: BoardState;
   round: RoundState | null;
@@ -37,6 +38,7 @@ export interface Snapshot {
   fileIds: string[];
   participantId: string;
   role: "host" | "guest";
+  avatars: AvatarMarker[];
 }
 export interface Presence { id: string; name: string; role: "host" | "guest" }
 export interface CommandContext { commandId: string; epoch: number; roundId: string | null }
@@ -63,4 +65,5 @@ export type ServerEvent =
   | { type: "round"; board: BoardState; round: RoundState | null }
   | { type: "presence"; participants: Presence[] }
   | { type: "cursor"; id: string; x: number; y: number }
+  | { type: "avatar_state"; avatars: AvatarMarker[] }
   | { type: "error"; commandId: string | null; code: string; message: string };

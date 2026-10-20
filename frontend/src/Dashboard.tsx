@@ -2,6 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { PanelsTopLeft, LayoutGrid, UserRound, UsersRound, Bookmark, Plus, Search, MoreHorizontal, ArrowUpRight, Menu, LogOut, Pencil } from "lucide-react";
 import { request, createBoard, renameBoard, deleteBoard, setTemplateVisibility, removeTemplate, startTemplate, setCanvasTags, signIn, type Account, type Canvas, type CanvasPage, type TemplateVisibility } from "./api";
+import { me, uploadAvatar, removeAvatar } from "./api";
+import AvatarView from "./AvatarView";
 import { errorMessage, NameDialog, ShareDialog, DeleteCanvasDialog, TemplateDialog, TagDialog } from "./ui";
 
 export default function Dashboard({ user }: { user: Account }) {
@@ -17,8 +19,33 @@ export default function Dashboard({ user }: { user: Account }) {
   const [notice, setNotice] = useState("");
   const [refresh, setRefresh] = useState(0);
   const [mobile, setMobile] = useState(false);
+  const [avatarVersion, setAvatarVersion] = useState(user.avatarVersion);
+  const [hasAvatar, setHasAvatar] = useState(user.hasAvatar);
+  const [avatarError, setAvatarError] = useState("");
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const avatarInput = useRef<HTMLInputElement>(null);
   const [dialog, setDialog] = useState<{ type: "create" | "rename" | "share" | "delete" | "template" | "start-template" | "tags"; canvas?: Canvas } | null>(null);
   const navigate = useNavigate();
+  async function setProfileImage(file?: File) {
+    if (!file) return;
+    if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type) || file.size > 1_048_576) {
+      setAvatarError("Choose a PNG, JPEG, WebP, or GIF image up to 1 MB.");
+      return;
+    }
+    setAvatarBusy(true); setAvatarError("");
+    try {
+      const dataURL = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Could not read image."));
+        reader.onerror = () => reject(new Error("Could not read image."));
+        reader.readAsDataURL(file);
+      });
+      await uploadAvatar(file.type, dataURL);
+      const profile = await me();
+      setAvatarVersion(profile.avatarVersion); setHasAvatar(profile.hasAvatar);
+    } catch (error) { setAvatarError(error instanceof Error ? error.message : "Could not update avatar."); }
+    finally { setAvatarBusy(false); if (avatarInput.current) avatarInput.current.value = ""; }
+  }
   const scrollKey = `dashboard-scroll:${params}`;
   const restoredScroll = useRef("");
   useLayoutEffect(() => {
@@ -56,7 +83,14 @@ export default function Dashboard({ user }: { user: Account }) {
       <Link to="/" className="flex gap-3 items-center font-semibold text-lg mt-14 md:mt-3 mb-12 no-underline text-slate-900"><PanelsTopLeft size={26} className="text-blue-600" />Team Canvas</Link>
       <nav aria-label="Canvases" className="space-y-2">{([["all", "All canvases", LayoutGrid], ["mine", "My canvases", UserRound], ["shared", "Shared with me", UsersRound], ["templates", "Templates", Bookmark]] as const).map(([value, label, Icon]) =>
         <Link key={value} to={value === "all" ? "/" : `/?filter=${value}`} onClick={() => setMobile(false)} aria-current={filter === value ? "page" : undefined} className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium no-underline ${filter === value ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-50"}`}><Icon size={18} />{label}</Link>)}</nav>
-      <div className="mt-auto border-t border-slate-200 pt-5"><div className="flex gap-3 items-center"><span className="rounded-full bg-slate-100 w-9 h-9 flex items-center justify-center font-medium">{user.displayName.slice(0, 1).toUpperCase()}</span><span className="truncate text-sm font-medium">{user.displayName}</span></div><Link to="/logout" className="flex items-center gap-2 text-sm text-slate-500 mt-4 no-underline"><LogOut size={16} />Sign out</Link></div>
+      <div className="mt-auto border-t border-slate-200 pt-5">
+        <div className="flex gap-3 items-center"><AvatarView userId={user.id} name={user.displayName} version={avatarVersion} hasAvatar={hasAvatar} /><span className="truncate text-sm font-medium">{user.displayName}</span></div>
+        <input ref={avatarInput} className="sr-only" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={event => void setProfileImage(event.target.files?.[0])} />
+        <div className="flex gap-3 mt-2"><button className="text-action text-xs" disabled={avatarBusy} onClick={() => avatarInput.current?.click()}>{avatarBusy ? "Saving…" : "Change avatar"}</button>
+          {hasAvatar && <button className="text-action text-xs muted" disabled={avatarBusy} onClick={() => { setAvatarBusy(true); setAvatarError(""); void removeAvatar().then(async () => { const profile = await me(); setAvatarVersion(profile.avatarVersion); setHasAvatar(profile.hasAvatar); }).catch(error => setAvatarError(error instanceof Error ? error.message : "Could not remove avatar.")).finally(() => setAvatarBusy(false)); }}>Remove</button>}</div>
+        {avatarError && <p className="text-xs text-red-700 mt-2" role="alert">{avatarError}</p>}
+        <Link to="/logout" className="flex items-center gap-2 text-sm text-slate-500 mt-4 no-underline"><LogOut size={16} />Sign out</Link>
+      </div>
     </aside>
     <main className="md:ml-60 px-6 pt-24 pb-12 md:px-12 md:pt-12 max-w-7xl">
       <header className="flex flex-wrap items-center justify-between gap-5 mb-9"><div><h1 className="text-3xl font-semibold tracking-tight m-0">{title}</h1><p className="text-slate-500 text-sm mt-3">Your space to think together.</p></div><button className="button primary" onClick={() => setDialog({ type: "create" })}><Plus size={18} />New canvas</button></header>
