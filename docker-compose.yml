@@ -55,6 +55,9 @@ services:
       OIDC_CLIENT_SECRET: ${DEV_OIDC_CLIENT_SECRET:-development-only-client-secret}
       OIDC_SESSION_SECRET: ${DEV_OIDC_SESSION_SECRET:-development-only-session-encryption-secret-change-me}
       QUARKUS_OIDC_DISCOVERY_ENABLED: "false"
+      # Local development only: reset the schema if Flyway validation fails.
+      QUARKUS_FLYWAY_VALIDATE_AT_START: "true"
+      QUARKUS_FLYWAY_VALIDATE_AT_START_CLEAN_ON_VALIDATION_ERROR: "true"
       QUARKUS_OIDC_AUTHORIZATION_PATH: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8180/auth}/realms/team-canvas/protocol/openid-connect/auth
       QUARKUS_OIDC_TOKEN_PATH: http://keycloak:8080/auth/realms/team-canvas/protocol/openid-connect/token
       QUARKUS_OIDC_JWKS_PATH: http://keycloak:8080/auth/realms/team-canvas/protocol/openid-connect/certs
