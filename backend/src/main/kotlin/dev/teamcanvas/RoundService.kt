@@ -99,23 +99,25 @@ class RoundService @Inject constructor(private val repository: BoardRepository) 
         if (publish) {
             connection
                 .prepareStatement(
-                    """DELETE FROM elements WHERE board_id=? AND round_id=?
+                    """DELETE FROM elements WHERE board_id=? AND page_id=? AND round_id=?
                 AND scope='private' AND body->>'isDeleted'='true'"""
                 )
                 .use {
                     it.setObject(1, state.id)
-                    it.setObject(2, state.roundId)
+                    it.setObject(2, state.pageId)
+                    it.setObject(3, state.roundId)
                     it.executeUpdate()
                 }
             connection
                 .prepareStatement(
-                    """DELETE FROM assets a WHERE a.board_id=? AND a.round_id=? AND a.scope='private'
-                AND NOT EXISTS (SELECT 1 FROM elements e WHERE e.board_id=a.board_id AND e.body->>'fileId'=a.id
+                    """DELETE FROM assets a WHERE a.board_id=? AND a.page_id=? AND a.round_id=? AND a.scope='private'
+                AND NOT EXISTS (SELECT 1 FROM elements e WHERE e.board_id=a.board_id AND e.page_id=a.page_id AND e.body->>'fileId'=a.id
                 AND e.body->>'type'='image' AND e.body->>'isDeleted' IS DISTINCT FROM 'true')"""
                 )
                 .use {
                     it.setObject(1, state.id)
-                    it.setObject(2, state.roundId)
+                    it.setObject(2, state.pageId)
+                    it.setObject(3, state.roundId)
                     it.executeUpdate()
                 }
         }
@@ -123,11 +125,13 @@ class RoundService @Inject constructor(private val repository: BoardRepository) 
             // Table names are constants, never supplied by clients.
             val sql =
                 if (publish)
-                    "UPDATE $table SET scope='public',round_id=NULL WHERE board_id=? AND round_id=? AND scope='private'"
-                else "DELETE FROM $table WHERE board_id=? AND round_id=? AND scope='private'"
+                    if (table == "elements") "UPDATE elements SET scope='public',round_id=NULL,poker_created=true WHERE board_id=? AND page_id=? AND round_id=? AND scope='private'"
+                    else "UPDATE assets SET scope='public',round_id=NULL WHERE board_id=? AND page_id=? AND round_id=? AND scope='private'"
+                else "DELETE FROM $table WHERE board_id=? AND page_id=? AND round_id=? AND scope='private'"
             connection.prepareStatement(sql).use {
                 it.setObject(1, state.id)
-                it.setObject(2, state.roundId)
+                it.setObject(2, state.pageId)
+                it.setObject(3, state.roundId)
                 it.executeUpdate()
             }
         }

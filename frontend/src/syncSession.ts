@@ -1,4 +1,4 @@
-import type { BoardCommand, ControlType, ElementData, Files, ServerEvent, Snapshot } from "./protocol";
+import type { BoardCommand, ControlType, ElementData, Files, PageAction, ServerEvent, Snapshot } from "./protocol";
 import { elementFingerprint, indexById, mergeById, normalizeElement, restoreLockedPublic } from "./syncCore";
 
 // getRandomValues is also available on development HTTP origins in a private network.
@@ -11,6 +11,7 @@ function commandId(): string {
 }
 
 type Flight = { command: BoardCommand; accepted: boolean; dispatchedAt: number; retryAfter: number | null };
+type QueuedAction = { type: ControlType } | PageAction;
 export interface SessionView {
   snapshot: Snapshot | null;
   elements: ElementData[];
@@ -30,7 +31,7 @@ export class SyncSession {
   private files: Files = {};
   private knownFiles = new Set<string>();
   private flight: Flight | null = null;
-  private action: ControlType | null = null;
+  private action: QueuedAction | null = null;
   private awaitingState = false;
   private online = false;
   private recovery: ElementData[] = [];
@@ -135,19 +136,34 @@ export class SyncSession {
       elements.forEach(element => this.pending.delete(element.id));
       this.dispatch({ ...this.context(), type: "patch", elements, files });
     } else if (this.action) {
-      this.dispatch({ ...this.context(), type: this.action, draftRevision: this.snapshot.round?.draftRevision ?? 0 });
+      const context = this.context();
+      if (this.action.type === "done") this.dispatch({ ...context, type: "done", draftRevision: this.snapshot.round?.draftRevision ?? 0 });
+      else this.dispatch({ ...context, ...this.action });
     }
   }
 
   control(type: ControlType) {
+    this.queueAction({ type });
+  }
+
+  createPage(copyCurrent: boolean, includePoker: boolean) {
+    this.queueAction({ type: "create_page", copyCurrent, includePoker });
+  }
+
+  selectPage(pageId: string) {
+    this.queueAction({ type: "select_page", targetPageId: pageId });
+  }
+
+  private queueAction(action: QueuedAction) {
     if (!this.online || !this.snapshot || this.action || this.awaitingState) return;
-    this.action = type;
+    if (this.snapshot.board.mode === "poker" && action.type !== "done" && action.type !== "cancel_round") return;
+    this.action = action;
     this.flush();
     this.emit();
   }
 
   private context() {
-    return { commandId: this.createId(), epoch: this.snapshot!.board.epoch, roundId: this.snapshot!.board.roundId };
+    return { commandId: this.createId(), epoch: this.snapshot!.board.epoch, roundId: this.snapshot!.board.roundId, pageId: this.snapshot!.board.pageId };
   }
 
   private dispatch(command: BoardCommand) {

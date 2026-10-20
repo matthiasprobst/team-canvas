@@ -91,7 +91,7 @@ class BoardStoreIntegrationTest {
 
     private fun context(who: Participant): CommandContext {
         val board = store.snapshot(who).board
-        return CommandContext(UUID.randomUUID(), board.epoch, board.roundId)
+        return CommandContext(UUID.randomUUID(), board.epoch, board.roundId, board.pageId)
     }
 
     private fun shape(id: String, x: Int = 0) =

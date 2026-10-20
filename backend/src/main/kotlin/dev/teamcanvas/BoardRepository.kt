@@ -28,7 +28,7 @@ class BoardRepository @Inject constructor(private val dataSource: DataSource) {
     fun board(connection: Connection, id: UUID): BoardState =
         connection
             .prepareStatement(
-                "SELECT id,name,mode,current_round_id,epoch,revision FROM boards WHERE id=? FOR UPDATE"
+                "SELECT id,name,mode,current_round_id,epoch,revision,current_page_id FROM boards WHERE id=? FOR UPDATE"
             )
             .use { statement ->
                 statement.setObject(1, id)
@@ -45,6 +45,7 @@ class BoardRepository @Inject constructor(private val dataSource: DataSource) {
                         rows.getObject("current_round_id", UUID::class.java),
                         rows.getLong("epoch"),
                         rows.getLong("revision"),
+                        rows.getObject("current_page_id", UUID::class.java),
                     )
                 }
             }
@@ -105,6 +106,14 @@ class BoardRepository @Inject constructor(private val dataSource: DataSource) {
         val member = members.find { it.id == who.id }
         return RoundState(id, member?.done ?: false, member != null, revision, members)
     }
+
+    fun pages(connection: Connection, boardId: UUID): List<CanvasSheet> =
+        connection.prepareStatement("SELECT id,position FROM canvas_pages WHERE board_id=? ORDER BY position").use {
+            it.setObject(1, boardId)
+            it.executeQuery().use { rows -> buildList {
+                while (rows.next()) add(CanvasSheet(rows.getObject(1, UUID::class.java), rows.getInt(2)))
+            } }
+        }
 
     fun receipt(connection: Connection, who: Participant, id: UUID): CommandAck? =
         connection

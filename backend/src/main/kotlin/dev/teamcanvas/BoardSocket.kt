@@ -109,6 +109,7 @@ class RoomHub
 constructor(
     private val store: BoardStore,
     private val rounds: RoundService,
+    private val pages: CanvasPageService,
     private val json: ObjectMapper,
     private val access: CanvasAccess,
     private val limits: RequestLimits,
@@ -283,6 +284,17 @@ constructor(
                             rounds.ready(who, context, revision.asLong())
                         }
                         "cancel_round" -> rounds.cancel(who, context)
+                        "create_page" -> pages.create(
+                            who,
+                            context,
+                            packet.path("copyCurrent").asBoolean(false),
+                            packet.path("includePoker").asBoolean(false),
+                        )
+                        "select_page" -> pages.select(
+                            who,
+                            context,
+                            UUID.fromString(packet.path("targetPageId").asText()),
+                        )
                         else -> throw ClientException("invalid_message", "Unknown message type.")
                     }
                 send(peer, result.ack)
@@ -341,6 +353,8 @@ constructor(
                             "start_round",
                             "done",
                             "cancel_round",
+                            "create_page",
+                            "select_page",
                             "resync",
                             "cursor",
                             "ping",
@@ -361,13 +375,14 @@ constructor(
             !epoch.isIntegralNumber ||
                 !epoch.canConvertToLong() ||
                 epoch.asLong() < 0 ||
-                !packet.has("roundId")
+                !packet.has("roundId") || !packet.hasNonNull("pageId")
         )
             throw ClientException("bad_request", "Round context is missing.")
         return CommandContext(
             UUID.fromString(packet.path("commandId").asText()),
             epoch.asLong(),
             packet.get("roundId").takeUnless { it.isNull }?.let { UUID.fromString(it.asText()) },
+            UUID.fromString(packet.path("pageId").asText()),
         )
     }
 

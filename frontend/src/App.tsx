@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useBlocker, useLocation } from "react-router-dom";
+import { ArrowLeft, ChevronLeft, ChevronRight, Plus, Share2, StickyNote } from "lucide-react";
 import { Excalidraw, CaptureUpdateAction, convertToExcalidrawElements } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import type { Identity } from "./api";
@@ -11,10 +12,13 @@ import { Modal, ShareDialog } from "./ui";
 export default function BoardEditor({ boardId, identity }: { boardId: string; identity: Identity }) {
   const locationState = useLocation().state as { dashboard?: string } | null;
   const dashboard = locationState?.dashboard?.startsWith("/?") ? locationState.dashboard : "/";
-  const { view, people, deleted, editorRef, onChange, setEditor, pointer, control, recoveryExported } = useBoardSession(boardId, identity);
+  const { view, people, deleted, editorRef, onChange, setEditor, pointer, control, createPage, selectPage, recoveryExported } = useBoardSession(boardId, identity);
   const { snapshot, online, error } = view;
   const [switching, setSwitching] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [pageDialog, setPageDialog] = useState(false);
+  const [copyPageContent, setCopyPageContent] = useState(true);
+  const [includePokerContent, setIncludePokerContent] = useState(false);
   const sticky = () => {
     const editor = editorRef.current;
     if (!editor || !editable) return;
@@ -68,28 +72,61 @@ export default function BoardEditor({ boardId, identity }: { boardId: string; id
     </Modal>}
     {switching && <CanvasSwitcher current={boardId} close={() => setSwitching(false)} />}
     {sharing && <ShareDialog id={boardId} name={snapshot?.board.name ?? "canvas"} close={() => setSharing(false)} />}
-    <header className="topbar">
-      <Link className="back-link" to={dashboard}>← Canvases</Link>
-      <button onClick={() => setSwitching(true)}>Switch canvas</button>
-      <strong>{snapshot?.board.name ?? "Board"}</strong>
-      <span className={`pill ${online ? "" : "offline"}`}>{online ? (view.unsaved ? "● Saving…" : "● Saved") : "○ Offline"}</span>
-      {poker && <span className="pill poker">🔒 Poker round</span>}
-      <div className="spacer" />
-      <button onClick={sticky} disabled={!editable}>＋ Sticky note</button>
-      {isHost && !deleted && <button onClick={() => setSharing(true)}>Share</button>}
-      <Link className="back-link" to="/logout">Sign out</Link>
-      {!online && error && !deleted && <button onClick={() => {
-        location.reload();
-      }}>Rejoin</button>}
-      {isHost && !poker && <button className="primary" onClick={() => control("start_round")} disabled={!online || view.busy}>Start poker</button>}
-      {poker && editable && <button className="primary" onClick={() => control("done")}>✓ Ready</button>}
-      {poker && round?.done && <span className="pill">Your contribution is locked</span>}
-      {poker && isHost && <button disabled={!online || view.busy} onClick={() => {
-        if (confirm("Cancel this round and delete all private contributions?")) control("cancel_round");
-      }}>Cancel round</button>}
-
-      {view.recovery.length > 0 && <button onClick={() => downloadDraft(true)}>Download recovered draft</button>}
-      {!online && view.unsaved && <button onClick={() => downloadDraft()}>Download draft</button>}
+    {pageDialog && <Modal title="Create next page" close={() => setPageDialog(false)}>
+      <p className="text-sm text-slate-600">Create a page from the current canvas or start with a blank page.</p>
+      <label className="flex gap-2 items-center text-sm mt-4"><input type="checkbox" checked={copyPageContent} onChange={event => setCopyPageContent(event.target.checked)} />Copy current page content</label>
+      <label className="flex gap-2 items-center text-sm mt-3"><input type="checkbox" checked={includePokerContent} disabled={!copyPageContent || !snapshot?.pokerCreatedIds.length} onChange={event => setIncludePokerContent(event.target.checked)} />Include drawings created during poker ({snapshot?.pokerCreatedIds.length ?? 0})</label>
+      <div className="flex justify-end gap-3 mt-6"><button className="button" onClick={() => setPageDialog(false)}>Cancel</button><button className="button primary" disabled={!online || view.busy || poker} onClick={() => { createPage(copyPageContent, includePokerContent); setPageDialog(false); }}>Create page</button></div>
+    </Modal>}
+    <header className="editor-navbar">
+      <div className="navbar-main">
+        <div className="navbar-identity">
+          <Link className="canvas-back" to={dashboard} aria-label="Back to canvases"><ArrowLeft size={17} /><span>Canvases</span></Link>
+          <span className="navbar-divider" />
+          <div className="canvas-heading"><span className="canvas-kicker">TEAM CANVAS</span><strong title={snapshot?.board.name}>{snapshot?.board.name ?? "Board"}</strong></div>
+        </div>
+        <div className="navbar-actions">
+          <span className={`connection-state ${online ? "is-online" : "is-offline"}`}><span className="connection-dot" />{online ? (view.unsaved ? "Saving" : "Saved") : "Offline"}</span>
+          {!online && error && !deleted && <button className="nav-button" onClick={() => location.reload()}>Reconnect</button>}
+          {isHost && !deleted && <button className="nav-button" onClick={() => setSharing(true)}><Share2 size={16} /><span>Share</span></button>}
+          <button className="nav-button switch-canvas" onClick={() => setSwitching(true)}>Switch canvas</button>
+          <Link className="signout-link" to="/logout">Sign out</Link>
+        </div>
+      </div>
+      <div className="navbar-workspace">
+        <div className="page-tools">
+          <span className="page-caption">PAGE</span>
+          {snapshot && <div className="page-picker">
+            <button className="page-step" aria-label="Previous page" disabled={!online || view.busy || poker || snapshot.pages.findIndex(page => page.id === snapshot.board.pageId) <= 0} onClick={() => {
+              const index = snapshot.pages.findIndex(page => page.id === snapshot.board.pageId);
+              if (index > 0) selectPage(snapshot.pages[index - 1].id);
+            }}><ChevronLeft size={17} /></button>
+            <select aria-label="Canvas page" value={snapshot.board.pageId} disabled={!online || view.busy || poker} onChange={event => selectPage(event.target.value)}>
+              {snapshot.pages.map((page, index) => <option key={page.id} value={page.id}>Page {index + 1}</option>)}
+            </select>
+            <span className="page-count">{snapshot.pages.findIndex(page => page.id === snapshot.board.pageId) + 1}<i>/</i>{snapshot.pages.length}</span>
+            <button className="page-step" aria-label="Next page" disabled={!online || view.busy || poker || snapshot.pages.findIndex(page => page.id === snapshot.board.pageId) >= snapshot.pages.length - 1} onClick={() => {
+              const index = snapshot.pages.findIndex(page => page.id === snapshot.board.pageId);
+              if (index < snapshot.pages.length - 1) selectPage(snapshot.pages[index + 1].id);
+            }}><ChevronRight size={17} /></button>
+          </div>}
+          <button className="new-page-button" disabled={!online || view.busy || poker} onClick={() => { setCopyPageContent(true); setIncludePokerContent(false); setPageDialog(true); }}><Plus size={16} /><span>New page</span></button>
+        </div>
+        <div className="workspace-divider" />
+        <div className="canvas-tools">
+          {poker && <span className="poker-status"><span>●</span> Poker round</span>}
+          {snapshot?.pokerCreatedIds.length ? <span className="poker-count">{snapshot.pokerCreatedIds.length} poker drawings</span> : null}
+          <button className="nav-button tool-button" onClick={sticky} disabled={!editable}><StickyNote size={16} /><span>Sticky note</span></button>
+          {isHost && !poker && <button className="primary-action" onClick={() => control("start_round")} disabled={!online || view.busy}>Start poker</button>}
+          {poker && editable && <button className="primary-action" onClick={() => control("done")}>✓ <span>Ready</span></button>}
+          {poker && round?.done && <span className="locked-status">Your contribution is locked</span>}
+          {poker && isHost && <button className="nav-button cancel-round" disabled={!online || view.busy} onClick={() => {
+            if (confirm("Cancel this round and delete all private contributions?")) control("cancel_round");
+          }}>Cancel round</button>}
+          {view.recovery.length > 0 && <button className="nav-button" onClick={() => downloadDraft(true)}>Download recovered draft</button>}
+          {!online && view.unsaved && <button className="nav-button" onClick={() => downloadDraft()}>Download draft</button>}
+        </div>
+      </div>
     </header>
     {error && <div className="message" role="alert">{error}</div>}
     <div className="sidebar">

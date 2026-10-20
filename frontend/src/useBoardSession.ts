@@ -22,6 +22,7 @@ export function useBoardSession(boardId: string, identity: Identity) {
   const lastDrawn = useRef("");
   const renderedFiles = useRef(new Set<string>());
   const lastMode = useRef<string | undefined>(undefined);
+  const lastPageId = useRef<string | undefined>(undefined);
   const cursors = useRef(new Map<string, { x: number; y: number }>());
   const peopleRef = useRef<Presence[]>([]);
   const publishRef = useRef<(next: SessionView) => void>(() => {});
@@ -55,7 +56,12 @@ export function useBoardSession(boardId: string, identity: Identity) {
         cursors.current.clear();
         editor.updateScene({ collaborators: new Map() });
       }
+      if (next.snapshot?.board.pageId && lastPageId.current && lastPageId.current !== next.snapshot.board.pageId) {
+        cursors.current.clear();
+        editor.updateScene({ collaborators: new Map() });
+      }
       lastMode.current = next.snapshot?.board.mode;
+      lastPageId.current = next.snapshot?.board.pageId;
     } finally { applyRef.current = false; }
   }, []);
 
@@ -192,6 +198,8 @@ export function useBoardSession(boardId: string, identity: Identity) {
   }, []);
 
   const control = useCallback((type: ControlType) => controller.control(type), [controller]);
+  const createPage = useCallback((copyCurrent: boolean, includePoker: boolean) => controller.createPage(copyCurrent, includePoker), [controller]);
+  const selectPage = useCallback((pageId: string) => controller.selectPage(pageId), [controller]);
   const recoveryExported = useCallback(() => controller.recoveryExported(), [controller]);
-  return { view, people, deleted, editorRef, onChange, setEditor, pointer, control, recoveryExported };
+  return { view, people, deleted, editorRef, onChange, setEditor, pointer, control, createPage, selectPage, recoveryExported };
 }

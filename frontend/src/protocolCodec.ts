@@ -6,7 +6,9 @@ const strings = (value: unknown): value is string[] => Array.isArray(value) && v
 const integer = (value: unknown) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 const role = (value: unknown) => value === "host" || value === "guest";
 const board = (value: unknown) => object(value) && typeof value.id === "string" && typeof value.name === "string" &&
-  (value.mode === "standard" || value.mode === "poker") && (value.roundId === null || typeof value.roundId === "string") && integer(value.epoch) && integer(value.revision);
+  (value.mode === "standard" || value.mode === "poker") && (value.roundId === null || typeof value.roundId === "string") &&
+  integer(value.epoch) && integer(value.revision) && typeof value.pageId === "string";
+const pages = (value: unknown) => Array.isArray(value) && value.every(page => object(page) && typeof page.id === "string" && integer(page.position));
 const round = (value: unknown) => value === null || (object(value) && typeof value.id === "string" &&
   typeof value.done === "boolean" && typeof value.included === "boolean" && integer(value.draftRevision) && Array.isArray(value.members) &&
   value.members.every(member => object(member) && typeof member.id === "string" && typeof member.name === "string" && typeof member.done === "boolean"));
@@ -25,7 +27,7 @@ export function parseServerEvent(text: string): ServerEvent {
     case "snapshot": {
       const data = value.data;
       valid = object(data) && board(data.board) && round(data.round) && elements(data.elements) && strings(data.publicIds) &&
-        strings(data.fileIds) && typeof data.participantId === "string" && role(data.role);
+        strings(data.fileIds) && pages(data.pages) && strings(data.pokerCreatedIds) && typeof data.participantId === "string" && role(data.role);
       break;
     }
     case "patch":

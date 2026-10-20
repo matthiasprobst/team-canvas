@@ -20,7 +20,9 @@ export interface BoardState {
   roundId: string | null;
   epoch: number;
   revision: number;
+  pageId: string;
 }
+export interface CanvasPage { id: string; position: number }
 export interface RoundMember { id: string; name: string; done: boolean }
 export interface RoundState {
   id: string;
@@ -35,15 +37,21 @@ export interface Snapshot {
   elements: ElementData[];
   publicIds: string[];
   fileIds: string[];
+  pages: CanvasPage[];
+  pokerCreatedIds: string[];
   participantId: string;
   role: "host" | "guest";
 }
 export interface Presence { id: string; name: string; role: "host" | "guest" }
-export interface CommandContext { commandId: string; epoch: number; roundId: string | null }
+export interface CommandContext { commandId: string; epoch: number; roundId: string | null; pageId: string }
 export type ControlType = "start_round" | "done" | "cancel_round";
+export type PageAction =
+  | { type: "create_page"; copyCurrent: boolean; includePoker: boolean }
+  | { type: "select_page"; targetPageId: string };
 export type BoardCommand = CommandContext & (
   | { type: "patch"; elements: ElementData[]; files: Files }
   | { type: ControlType; draftRevision?: number }
+  | PageAction
 );
 export type PatchEvent = {
   type: "patch";

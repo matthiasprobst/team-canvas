@@ -48,7 +48,11 @@ data class BoardState(
     val roundId: UUID?,
     val epoch: Long,
     val revision: Long,
+    val pageId: UUID,
 )
+
+data class CanvasSheet(val id: UUID, val position: Int)
+data class StoredElement(val id: String, val body: JsonNode, val scope: String, val pokerCreated: Boolean)
 
 data class RoundMember(val id: UUID, val name: String, val done: Boolean)
 
@@ -68,9 +72,11 @@ data class SceneSnapshot(
     val fileIds: List<String>,
     val participantId: UUID,
     val role: String,
+    val pages: List<CanvasSheet>,
+    val pokerCreatedIds: List<String>,
 )
 
-data class CommandContext(val commandId: UUID, val epoch: Long, val roundId: UUID?)
+data class CommandContext(val commandId: UUID, val epoch: Long, val roundId: UUID?, val pageId: UUID)
 
 data class CommandAck(val type: String = "ack", val commandId: UUID, val revision: Long)
 
@@ -87,7 +93,7 @@ class ClientException(val code: String, override val message: String) : RuntimeE
 /** Domain rules are independent of HTTP, sockets, and SQL. */
 object RoundRules {
     fun requireContext(state: BoardState, command: CommandContext) {
-        if (state.epoch != command.epoch || state.roundId != command.roundId)
+        if (state.epoch != command.epoch || state.roundId != command.roundId || state.pageId != command.pageId)
             throw ClientException(
                 "stale_round",
                 "The round changed. Your draft has been preserved.",

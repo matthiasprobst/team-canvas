@@ -18,7 +18,7 @@ constructor(private val repository: BoardRepository, private val json: ObjectMap
                 connection
                     .prepareStatement(
                         """
-                        SELECT id,body,scope FROM elements WHERE board_id=? AND
+                        SELECT id,body,scope,poker_created FROM elements WHERE board_id=? AND page_id=? AND
                         (scope='public' OR (scope='private' AND author_id=? AND round_id=?))
                         ORDER BY body->>'index' COLLATE "C" NULLS LAST,id
                         """
@@ -26,12 +26,13 @@ constructor(private val repository: BoardRepository, private val json: ObjectMap
                     )
                     .use {
                         it.setObject(1, who.boardId)
-                        it.setObject(2, who.id)
-                        it.setObject(3, state.roundId)
+                        it.setObject(2, state.pageId)
+                        it.setObject(3, who.id)
+                        it.setObject(4, state.roundId)
                         it.executeQuery().use { data ->
                             buildList {
                                 while (data.next()) add(
-                                    Triple(
+                                    StoredElement(
                                         data.getString(1),
                                         ElementValidation.validateElements(
                                                 json
@@ -40,12 +41,13 @@ constructor(private val repository: BoardRepository, private val json: ObjectMap
                                             )
                                             .single(),
                                         data.getString(3),
+                                        data.getBoolean(4),
                                     )
                                 )
                             }
                         }
                     }
-            val elements = rows.map { it.second }
+            val elements = rows.map { it.body }
             val fileIds =
                 elements
                     .filter {
@@ -57,10 +59,12 @@ constructor(private val repository: BoardRepository, private val json: ObjectMap
                 state,
                 repository.round(connection, state, who),
                 elements,
-                rows.filter { it.third == "public" }.map { it.first },
+                rows.filter { it.scope == "public" }.map { it.id },
                 fileIds,
                 who.id,
                 who.role,
+                repository.pages(connection, who.boardId),
+                rows.filter { it.pokerCreated && !it.body.path("isDeleted").asBoolean() }.map { it.id },
             )
         }
 
@@ -75,16 +79,17 @@ constructor(private val repository: BoardRepository, private val json: ObjectMap
             connection
                 .prepareStatement(
                     """
-                    SELECT body FROM assets WHERE board_id=? AND id=? AND
+                    SELECT body FROM assets WHERE board_id=? AND page_id=? AND id=? AND
                     (scope='public' OR (scope='private' AND author_id=? AND round_id=?))
                     """
                         .trimIndent()
                 )
                 .use {
                     it.setObject(1, who.boardId)
-                    it.setString(2, id)
-                    it.setObject(3, who.id)
-                    it.setObject(4, state.roundId)
+                    it.setObject(2, state.pageId)
+                    it.setString(3, id)
+                    it.setObject(4, who.id)
+                    it.setObject(5, state.roundId)
                     it.executeQuery().use { rows ->
                         if (!rows.next()) throw ClientException("not_found", "Image not available.")
                         ElementValidation.validateFiles(
@@ -114,8 +119,8 @@ constructor(private val repository: BoardRepository, private val json: ObjectMap
                 if (round == null || !round.included || round.done)
                     throw ClientException("locked", "Your contribution is locked.")
             }
-            val existingElements = sizes(connection, "elements", who.boardId)
-            val existingAssets = sizes(connection, "assets", who.boardId)
+            val existingElements = sizes(connection, "elements", who.boardId, state.pageId)
+            val existingAssets = sizes(connection, "assets", who.boardId, state.pageId)
             if (
                 existingElements.keys.plus(elements.map { it.path("id").asText() }).size > 4000 ||
                     existingAssets.keys.plus(files.keys).size > 150
@@ -156,25 +161,26 @@ constructor(private val repository: BoardRepository, private val json: ObjectMap
                 throw ClientException("invalid_file", "Image has no associated element.")
             for (element in elements) {
                 val id = element.path("id").asText()
-                requireOwnership(connection, "elements", who, id, scope, state.roundId)
+                requireOwnership(connection, "elements", who, id, scope, state.roundId, state.pageId)
                 if (
                     element.path("type").asText() == "image" &&
                         !element.path("isDeleted").asBoolean()
                 ) {
                     val fileId = element.path("fileId").asText()
                     if (!files.containsKey(fileId))
-                        assetInTransaction(connection, who, fileId, state.roundId)
+                        assetInTransaction(connection, who, fileId, state.roundId, state.pageId)
                 }
             }
             for ((id, file) in files) {
                 if (existingAssets.containsKey(id)) {
-                    assetInTransaction(connection, who, id, state.roundId)
+                    assetInTransaction(connection, who, id, state.roundId, state.pageId)
                     val previous =
                         connection
-                            .prepareStatement("SELECT body FROM assets WHERE board_id=? AND id=?")
+                            .prepareStatement("SELECT body FROM assets WHERE board_id=? AND page_id=? AND id=?")
                             .use {
                                 it.setObject(1, who.boardId)
-                                it.setString(2, id)
+                                it.setObject(2, state.pageId)
+                                it.setString(3, id)
                                 it.executeQuery().use { rows ->
                                     rows.next()
                                     json.readTree(rows.getString(1))
@@ -185,7 +191,17 @@ constructor(private val repository: BoardRepository, private val json: ObjectMap
                             previous.path("mimeType") != file.path("mimeType")
                     )
                         throw ClientException("invalid_file", "Image data cannot be changed.")
-                } else save(connection, "assets", who, id, file, scope, state.roundId)
+                } else {
+                    val usedOnOtherPage = connection.prepareStatement(
+                        "SELECT 1 FROM assets WHERE board_id=? AND id=?",
+                    ).use {
+                        it.setObject(1, who.boardId)
+                        it.setString(2, id)
+                        it.executeQuery().use { rows -> rows.next() }
+                    }
+                    if (usedOnOtherPage) throw ClientException("forbidden", "You cannot change this image.")
+                    save(connection, "assets", who, id, file, scope, state.roundId, state.pageId)
+                }
             }
             for (element in elements) save(
                 connection,
@@ -195,6 +211,7 @@ constructor(private val repository: BoardRepository, private val json: ObjectMap
                 element,
                 scope,
                 state.roundId,
+                state.pageId,
             )
             val ack = repository.commitCommand(connection, who, context.commandId)
             if (scope == "private")
@@ -211,9 +228,10 @@ constructor(private val repository: BoardRepository, private val json: ObjectMap
             PatchResult(CommandResult(ack), scope)
         }
 
-    private fun sizes(connection: Connection, table: String, boardId: UUID): Map<String, Long> =
-        connection.prepareStatement("SELECT id,stored_bytes FROM $table WHERE board_id=?").use {
+    private fun sizes(connection: Connection, table: String, boardId: UUID, pageId: UUID): Map<String, Long> =
+        connection.prepareStatement("SELECT id,stored_bytes FROM $table WHERE board_id=? AND page_id=?").use {
             it.setObject(1, boardId)
+            it.setObject(2, pageId)
             it.executeQuery().use { rows ->
                 buildMap { while (rows.next()) put(rows.getString(1), rows.getLong(2)) }
             }
@@ -226,10 +244,11 @@ constructor(private val repository: BoardRepository, private val json: ObjectMap
         id: String,
         scope: String,
         roundId: UUID?,
+        pageId: UUID,
     ) {
         connection
             .prepareStatement(
-                "SELECT scope,author_id,round_id FROM $table WHERE board_id=? AND id=?"
+                "SELECT page_id,scope,author_id,round_id FROM $table WHERE board_id=? AND id=?"
             )
             .use {
                 it.setObject(1, who.boardId)
@@ -237,10 +256,10 @@ constructor(private val repository: BoardRepository, private val json: ObjectMap
                 it.executeQuery().use { rows ->
                     if (
                         rows.next() &&
-                            (rows.getString(1) != scope ||
+                            (rows.getObject(1, UUID::class.java) != pageId || rows.getString(2) != scope ||
                                 (scope == "private" &&
-                                    (rows.getObject(2, UUID::class.java) != who.id ||
-                                        rows.getObject(3, UUID::class.java) != roundId)))
+                                    (rows.getObject(3, UUID::class.java) != who.id ||
+                                        rows.getObject(4, UUID::class.java) != roundId)))
                     )
                         throw ClientException("forbidden", "You cannot change this object.")
                 }
@@ -252,21 +271,23 @@ constructor(private val repository: BoardRepository, private val json: ObjectMap
         who: Participant,
         id: String,
         roundId: UUID?,
+        pageId: UUID,
     ) {
         val accessible =
             connection
                 .prepareStatement(
                     """
-                    SELECT 1 FROM assets WHERE board_id=? AND id=? AND
+                    SELECT 1 FROM assets WHERE board_id=? AND page_id=? AND id=? AND
                     (scope='public' OR (scope='private' AND author_id=? AND round_id=?))
                     """
                         .trimIndent()
                 )
                 .use {
                     it.setObject(1, who.boardId)
-                    it.setString(2, id)
-                    it.setObject(3, who.id)
-                    it.setObject(4, roundId)
+                    it.setObject(2, pageId)
+                    it.setString(3, id)
+                    it.setObject(4, who.id)
+                    it.setObject(5, roundId)
                     it.executeQuery().use { rows -> rows.next() }
                 }
         if (!accessible)
@@ -281,10 +302,11 @@ constructor(private val repository: BoardRepository, private val json: ObjectMap
         body: JsonNode,
         scope: String,
         roundId: UUID?,
+        pageId: UUID,
     ) {
         connection
             .prepareStatement(
-                """INSERT INTO $table(board_id,id,body,scope,author_id,round_id,stored_bytes) VALUES(?,?,?::jsonb,?,?,?,?)
+            """INSERT INTO $table(board_id,id,body,scope,author_id,round_id,stored_bytes,page_id) VALUES(?,?,?::jsonb,?,?,?,?,?)
             ON CONFLICT(board_id,id) DO UPDATE SET body=EXCLUDED.body,stored_bytes=EXCLUDED.stored_bytes"""
             )
             .use {
@@ -295,6 +317,7 @@ constructor(private val repository: BoardRepository, private val json: ObjectMap
                 it.setObject(5, who.id)
                 it.setObject(6, roundId)
                 it.setLong(7, body.toString().toByteArray(Charsets.UTF_8).size.toLong())
+                it.setObject(8, pageId)
                 it.executeUpdate()
             }
     }

@@ -201,27 +201,31 @@ constructor(
             // Keep only shared canvas content. Reassign authorship to the new owner and leave
             // round IDs, members, invitations, sessions, and private poker work behind.
             c.update(
-                """INSERT INTO elements(board_id,id,body,scope,author_id,round_id,stored_bytes)
-                SELECT ?,id,body,'public',?,NULL,stored_bytes FROM elements
-                WHERE board_id=? AND scope='public'""",
+                """INSERT INTO elements(board_id,id,body,scope,author_id,round_id,stored_bytes,page_id,poker_created)
+                SELECT ?,id,body,'public',?,NULL,stored_bytes,?,poker_created FROM elements
+                WHERE board_id=? AND page_id=? AND scope='public'""",
                 copyId,
                 participantId,
+                repository.board(c, copyId).pageId,
                 id,
+                source.pageId,
             )
             c.update(
-                """INSERT INTO assets(board_id,id,body,scope,author_id,round_id,stored_bytes)
-                SELECT ?, a.id, a.body, 'public', ?, NULL, a.stored_bytes
+                """INSERT INTO assets(board_id,id,body,scope,author_id,round_id,stored_bytes,page_id)
+                SELECT ?, a.id, a.body, 'public', ?, NULL, a.stored_bytes,?
                 FROM assets a
-                WHERE a.board_id=? AND a.scope='public'
+                WHERE a.board_id=? AND a.page_id=? AND a.scope='public'
                   AND EXISTS (
                     SELECT 1 FROM elements e
-                    WHERE e.board_id=a.board_id AND e.scope='public'
+                    WHERE e.board_id=a.board_id AND e.page_id=a.page_id AND e.scope='public'
                       AND e.body->>'type'='image' AND e.body->>'fileId'=a.id
                       AND NOT COALESCE((e.body->>'isDeleted')::boolean, false)
                   )""",
                 copyId,
                 participantId,
+                repository.board(c, copyId).pageId,
                 id,
+                source.pageId,
             )
             c.update(
                 """INSERT INTO canvas_tags(board_id,tag,normalized_tag)
