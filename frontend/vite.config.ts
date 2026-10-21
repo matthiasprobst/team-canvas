@@ -5,7 +5,7 @@ const proxy = process.env.TEAM_CANVAS_DEV_PROXY ?? "http://localhost:8080";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: { port: 5173, proxy: {
-    "/api": proxy,
-    "/ws": { target: proxy, ws: true },
+    "/api": { target: proxy, xfwd: true },
+    "/ws": { target: proxy, xfwd: true, ws: true },
   } },
 });
