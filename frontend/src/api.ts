@@ -77,7 +77,7 @@ export const setCanvasTags = (id: string, tags: string[]) =>
   request<void>(`/api/boards/${id}/tags`, { tags }, "PUT");
 export const getTagSuggestions = () => request<string[]>("/api/boards/tags/suggestions");
 export const createInvitation = (id: string) =>
-  request<{ inviteKey: string }>(`/api/boards/${id}/invitations`, {});
+  request<{ inviteKey: string; expiresAt: string }>(`/api/boards/${id}/invitations`, {});
 export const previewInvitation = (id: string, inviteKey: string, signal?: AbortSignal) =>
   request<{ name: string; ownerName: string }>(
     `/api/boards/${id}/invitations/preview`,

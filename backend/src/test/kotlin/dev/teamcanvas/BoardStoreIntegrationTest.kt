@@ -81,6 +81,49 @@ class BoardStoreIntegrationTest {
         assertEquals(2, BoardStore(lowered, SceneRepository(json), json).snapshot(who).pages.size)
     }
 
+    @Test
+    fun `templates preserve every page and exclude hidden data with atomic quota failure`() {
+        val room = room()
+        val first = store.snapshot(room.host).board.pageId
+        store.patch(room.host, context(room.host), listOf(shape("page-one")), emptyMap())
+        pages.create(room.host, context(room.host), false, false)
+        store.patch(room.host, context(room.host), listOf(shape("page-two")), emptyMap())
+        pages.create(room.host, context(room.host), false, false)
+        rounds.start(room.guest, context(room.guest))
+        store.patch(room.guest, context(room.guest), listOf(shape("secret")), emptyMap())
+        catalog.markTemplate(room.board.id, "public", room.owner)
+        val starter = user()
+        val copied = catalog.startTemplate(room.board.id, "Three pages", starter)
+        val joined = access.join(copied.id, JoinRequest(), starter)
+        val who = access.authenticate(copied.id, joined.token, starter)
+        val snapshot = store.snapshot(who)
+        assertEquals(3, snapshot.pages.size)
+        assertEquals(0, snapshot.pages.first { it.id == snapshot.board.pageId }.position)
+        assertNotEquals(first, snapshot.board.pageId)
+        assertEquals(1, snapshot.elements.size)
+        pages.select(who, context(who), snapshot.pages[1].id)
+        assertEquals(1, store.snapshot(who).elements.size)
+        pages.select(who, context(who), snapshot.pages[2].id)
+        assertTrue(store.snapshot(who).elements.isEmpty())
+        val repo = BoardRepository(dataSource, CanvasLimits(2, 20))
+        val limited = CanvasCatalog(repo, Accounts(repo), CanvasAccess(repo, Accounts(repo)))
+        val before = catalog.list(starter, "mine", "", "recent", 24, null).items.size
+        error("limit") { limited.startTemplate(room.board.id, "Must roll back", starter) }
+        assertEquals(before, catalog.list(starter, "mine", "", "recent", 24, null).items.size)
+        catalog.unmarkTemplate(room.board.id, room.owner)
+    }
+
+    @Test
+    fun `expired invitations reject both preview and acceptance without revoking membership`() {
+        val room = room()
+        dataSource.connection.use { c -> c.update("UPDATE board_invitations SET expires_at=now()-interval '1 second' WHERE board_id=?", room.board.id) }
+        error("not_found") { access.preview(room.board.id, room.inviteKey, user()) }
+        error("not_found") { access.join(room.board.id, JoinRequest(room.inviteKey), user()) }
+        assertNotNull(access.authenticate(room.board.id, room.guestToken, room.visitor))
+        repeat(20) { access.invite(room.board.id, room.owner) }
+        error("limit") { access.invite(room.board.id, room.owner) }
+    }
+
     private data class Room(
         val board: CreatedBoard,
         val host: Participant,
@@ -277,8 +320,10 @@ class BoardStoreIntegrationTest {
         val copiedScene = store.snapshot(copiedParticipant)
         assertEquals("standard", copiedScene.board.mode)
         assertNull(copiedScene.round)
-        assertEquals(setOf("shared-shape", "public-image"), copiedScene.elements.map { it.path("id").asText() }.toSet())
-        assertEquals(listOf("public-file"), copiedScene.fileIds)
+        assertEquals(2, copiedScene.elements.size)
+        assertTrue(copiedScene.elements.none { it.path("id").asText() in setOf("shared-shape", "public-image") })
+        assertEquals(1, copiedScene.fileIds.size)
+        assertNotEquals("public-file", copiedScene.fileIds.single())
         assertTrue(catalog.list(starter, "mine", "", "recent", 24, null).items.any { it.id == copy.id && it.templateVisibility == null })
 
         store.patch(copiedParticipant, context(copiedParticipant), listOf(shape("copy-only")), emptyMap())

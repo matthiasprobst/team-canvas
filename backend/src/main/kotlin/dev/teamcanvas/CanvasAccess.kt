@@ -128,7 +128,7 @@ constructor(private val repository: BoardRepository, private val accounts: Accou
         if (
             key.length != 43 ||
                 !c.query(
-                    "SELECT 1 FROM board_invitations WHERE board_id=? AND secret_hash=? AND NOT revoked",
+                    "SELECT 1 FROM board_invitations WHERE board_id=? AND secret_hash=? AND NOT revoked AND expires_at>now()",
                     id,
                     Security.hash(key),
                 ) {
@@ -141,6 +141,7 @@ constructor(private val repository: BoardRepository, private val accounts: Accou
     fun preview(id: UUID, key: String, identity: LoginIdentity): Map<String, String> {
         val user = accounts.current(identity)
         return repository.transaction { c ->
+            repository.board(c, id)
             accounts.requireLogin(c, user.id, identity.sid)
             invitation(c, id, key)
             c.query(
@@ -169,6 +170,8 @@ constructor(private val repository: BoardRepository, private val accounts: Accou
             repository.board(c, id)
             accounts.requireLogin(c, user.id, identity.sid)
             requireOwner(c, id, user)
+            val active = c.query("SELECT count(*) FROM board_invitations WHERE board_id=? AND NOT revoked AND expires_at>now()", id) { it.next(); it.getInt(1) }
+            if (active >= 20) throw ClientException("limit", "A canvas can have at most 20 active invitation links.")
             val key = Security.token()
             c.update(
                 "INSERT INTO board_invitations(id,board_id,creator_id,secret_hash) VALUES(?,?,?,?)",
@@ -177,7 +180,8 @@ constructor(private val repository: BoardRepository, private val accounts: Accou
                 user.id,
                 Security.hash(key),
             )
-            mapOf("inviteKey" to key)
+            val expiry = c.query("SELECT expires_at FROM board_invitations WHERE board_id=? AND secret_hash=?", id, Security.hash(key)) { it.next(); it.getTimestamp(1).toInstant().toString() }
+            mapOf("inviteKey" to key, "expiresAt" to expiry)
         }
     }
 

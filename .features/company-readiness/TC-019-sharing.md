@@ -1,6 +1,6 @@
 # TC-019: Expire invitations and clarify template publication
 
-Status: Todo
+Status: In review
 Priority: P1
 Dependencies: TC-013, TC-018
 
@@ -33,4 +33,4 @@ Commit coherent passing behavior with its tests and docs. Split storage foundati
 
 ## Completion evidence
 
-Pending implementation and validation.
+Implemented. PostgreSQL/backend suite: 57 passed, no skips, including multi-page copy isolation, atomic quota rollback, and expiry/membership independence. Frontend type-check passed. Browser journey pending.

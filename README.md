@@ -20,14 +20,14 @@ Keep additions tied to those workflows. Chat, video calls, AI assistants, task/p
 
 React/TypeScript and Excalidraw provide the browser UI; Kotlin/Quarkus provides one backend; PostgreSQL stores accounts, drawings, and uploaded images. Caddy serves the UI and proxies requests. Company deployments use an existing Keycloak identity provider. No Redis, message broker, separate image store, or application SaaS account is required. Tailwind and Vite are build tooling, and the UI is English.
 
-The current implementation has rollout gaps; see the [simplicity and company-readiness review](docs/simplicity-review.md) for evidence and proposed priorities. In particular, template copies currently include only the selected page, and the bundled Compose setup is for disposable development data.
+The current implementation has rollout gaps; see the [simplicity and company-readiness review](docs/simplicity-review.md) for evidence and proposed priorities. The bundled Compose setup is for disposable development data; use the Helm deployment for the company configuration.
 
 ## Features
 
 - Multiple persistent pages per canvas. Any member can create or select a page, and everyone follows the same selected page. New pages can copy shared content, optionally including revealed poker contributions. Page changes are blocked during a poker round; page renaming, reordering, and deletion are not implemented.
 - A personal dashboard with **All canvases**, **My canvases**, and **Shared with me**, plus search by canvas name or tags and sorting. Owners can add up to 20 tags per canvas; suggestions come from tags on their own canvases, and template copies keep their source tags.
 - Create canvases, rename those you own, and share invitation links. Recipients sign in and explicitly accept invitations.
-- Mark canvases you own as private templates, or make them public for all signed-in users of this deployment. Owners can edit templates from the Templates page; starting a template opens an independent canvas copied from the **currently selected page's** shared drawings and images. Other pages, private poker drafts, memberships, and invitations are not copied. Changes affect future copies only. Ready-made Scrum/architecture templates are not bundled; create your own layouts.
+- Mark canvases you own as private templates, or make them public for all signed-in users of this deployment. Owners can edit templates from the Templates page; starting a template opens an independent canvas copied from the shared drawings and images across **all pages**. Private poker drafts, memberships, and invitations are not copied. Changes affect future copies only. Ready-made Scrum/architecture templates are not bundled; create your own layouts.
 - Delete canvases you own from the dashboard’s actions menu. Confirmation permanently removes all contents and invitations for everyone, including active private drafts; connected viewers are notified.
 - Persistent account membership across browsers/devices; independent sessions in multiple tabs.
 - Collaborative shapes, text, sticky notes, images, presence, and shared cursors.

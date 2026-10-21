@@ -223,7 +223,10 @@ export function TemplateDialog({
           <button className="button" disabled={busy} onClick={close}>
             Cancel
           </button>
-          <button className="button primary" disabled={busy} onClick={() => void run(() => save(selected))}>
+          <button className="button primary" disabled={busy} onClick={() => {
+            if (selected === "public" && visibility !== "public" && !confirm("Publish this template to every signed-in user of this deployment? Existing copies cannot be recalled.")) return;
+            void run(() => save(selected));
+          }}>
             {busy ? "Saving…" : "Save settings"}
           </button>
         </div>
@@ -380,6 +383,7 @@ export function TagDialog({
 
 export function ShareDialog({ id, name, close }: { id: string; name: string; close: () => void }) {
   const [link, setLink] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -390,6 +394,7 @@ export function ShareDialog({ id, name, close }: { id: string; name: string; clo
     setMessage("");
     try {
       const result = await createInvitation(id);
+      setExpiresAt(result.expiresAt);
       setLink(`${location.origin}/b/${id}#invite=${encodeURIComponent(result.inviteKey)}`);
     } catch (e) {
       setError(errorMessage(e));
@@ -440,7 +445,7 @@ export function ShareDialog({ id, name, close }: { id: string; name: string; clo
             Copy link
           </button>
           <p className="text-xs text-slate-500 mt-3">
-            Earlier links continue to work until you revoke invitations.
+            This link expires {new Date(expiresAt).toLocaleString()}. Earlier links work until they expire or are revoked.
           </p>
         </div>
       )}
