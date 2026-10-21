@@ -11,7 +11,7 @@ CREATE TABLE app_users (
   CHECK ((status='placeholder' AND issuer IS NULL AND subject IS NULL) OR
          (status<>'placeholder' AND issuer IS NOT NULL AND subject IS NOT NULL))
 );
-CREATE TABLE blocked_identities (fingerprint CHAR(64) PRIMARY KEY);
+CREATE TABLE blocked_identities (fingerprint CHAR(64) PRIMARY KEY, key_id CHAR(16) NOT NULL, action TEXT NOT NULL CHECK(action IN ('anonymize','delete')));
 CREATE SEQUENCE deleted_user_number;
 CREATE TABLE login_sessions (
   user_id UUID NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,

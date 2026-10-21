@@ -42,6 +42,54 @@ class LifecycleIntegrationTest {
     @AfterAll fun cleanup() { source.connection.use { it.update("DROP SCHEMA IF EXISTS $schema CASCADE") } }
     private fun act(actor: UUID, target: UUID, action: String) = service.change(actor, target, action, service.impact(target).token, action.uppercase())
 
+    @Test fun `restore reapplies anonymous and destructive offboarding instead of resurrecting identities`() {
+        val admin = accounts.current(identity("Administrator")).id
+        val anonymized = identity("Restore anonymous identity")
+        val deleted = identity("Restore deleted identity")
+        val anonId = accounts.current(anonymized).id
+        val deleteId = accounts.current(deleted).id
+        access.create("Retained before backup", anonymized)
+        access.create("Deleted before backup", deleted)
+        act(admin, anonId, "anonymize")
+        act(admin, deleteId, "delete")
+        val saved = source.connection.use { RecoveryPreparation.export(it) }
+        val oldAnonymousBoard = UUID.randomUUID()
+        val oldDeletedBoard = UUID.randomUUID()
+        repository.transaction { c ->
+            for ((id, user) in listOf(anonId to anonymized, deleteId to deleted))
+                c.update("INSERT INTO app_users(id,issuer,subject,display_name) VALUES(?,?,?,?)", id, user.issuer, user.subject, user.name)
+            c.update("INSERT INTO boards(id,name,owner_user_id) VALUES(?,?,?)", oldAnonymousBoard, "Restored anonymous work", anonId)
+            c.update("INSERT INTO boards(id,name,owner_user_id) VALUES(?,?,?)", oldDeletedBoard, "Restored deleted work", deleteId)
+            assertEquals(2, RecoveryPreparation.prepare(c, saved, IdentityBlocks()))
+        }
+        source.connection.use { c ->
+            assertEquals(0L, c.query("SELECT count(*) FROM app_users WHERE id IN (?,?)", anonId, deleteId) { it.next(); it.getLong(1) })
+            assertTrue(c.query("SELECT 1 FROM boards WHERE id=?", oldAnonymousBoard) { it.next() })
+            assertFalse(c.query("SELECT 1 FROM boards WHERE id=?", oldDeletedBoard) { it.next() })
+            assertEquals(0L, c.query("SELECT count(*) FROM board_sessions") { it.next(); it.getLong(1) })
+            assertEquals(0L, c.query("SELECT count(*) FROM login_sessions WHERE NOT revoked") { it.next(); it.getLong(1) })
+        }
+        error("unauthorized") { accounts.current(anonymized.copy(sid="after-restore")) }
+        error("unauthorized") { accounts.current(deleted.copy(sid="after-restore")) }
+        assertThrows(IllegalArgumentException::class.java) {
+            repository.transaction { RecoveryPreparation.prepare(it, saved.copy(records=listOf(OffboardingRecord("a".repeat(64), "0".repeat(16), "delete"))), IdentityBlocks()) }
+        }
+    }
+
+    @Test fun `cleanup is bounded and does not delete revocation or identity blocks`() {
+        val owner = identity()
+        val account = accounts.current(owner)
+        val board = access.create("Cleanup", owner)
+        val joined = access.join(board.id, JoinRequest(), owner)
+        repository.transaction { c ->
+            c.update("""INSERT INTO board_sessions(token_hash,participant_id,user_id,sid,expires_at)
+                SELECT repeat(md5(g::text),2),?,?,?,now()-interval '1 day' FROM generate_series(1,501) g""", joined.participantId, account.id, owner.sid)
+            assertTrue(ExpiredRecords.cleanup(c) in 500..1500)
+            assertEquals(1L, c.query("SELECT count(*) FROM board_sessions WHERE user_id=? AND expires_at<now()", account.id) { it.next(); it.getLong(1) })
+        }
+        assertNotNull(access.authenticate(board.id, joined.token, owner))
+    }
+
     @Test fun `deactivation rejects old sessions and reactivation requires fresh login`() {
         val admin = accounts.current(identity("Administrator")).id
         val user = identity()

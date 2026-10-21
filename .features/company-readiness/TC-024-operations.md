@@ -1,6 +1,6 @@
 # TC-024: Implement cleanup and recovery procedures
 
-Status: Todo
+Status: In review
 Priority: P1
 Dependencies: TC-014, TC-021, TC-022
 
@@ -34,4 +34,4 @@ Commit coherent passing behavior with its tests and docs. Split storage foundati
 
 ## Completion evidence
 
-Pending implementation and validation.
+Implemented bounded in-process cleanup, independent offboarding export, exclusive offline restore preparation and key-ring validation. `mvn -o verify` with PostgreSQL: 64 passed, no skips, and Quarkus packaging passed. Tests simulate restored identity rows and assert anonymous retention versus owned-content deletion, session invalidation, missing-key failure, and bounded cleanup. Timed full dump/restore and real cluster recovery remain qualification checks.

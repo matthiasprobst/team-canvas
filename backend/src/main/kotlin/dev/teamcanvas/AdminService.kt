@@ -22,6 +22,8 @@ class AdminService @Inject constructor(
     private val log = Logger.getLogger(AdminService::class.java)
     private fun lock(id: UUID) = locks[Math.floorMod(id.hashCode(), locks.size)]
 
+    fun offboardingExport(): OffboardingExport = repository.transaction { RecoveryPreparation.export(it) }
+
     fun list(offset: Int, query: String): AdminUsers {
         if (offset !in 0..100000 || query.length > 120) throw ClientException("bad_request", "Invalid user filters.")
         return repository.transaction { c ->
@@ -78,7 +80,7 @@ class AdminService @Inject constructor(
             if (token != expected && token != expectedInactive) throw ClientException("conflict", "Canvas ownership changed. Review a fresh preview.")
             val ids = preview.canvases.map { it.id }
             ids.forEach { repository.board(c, it) }
-            blocks.block(c, identity.first, identity.second)
+            blocks.block(c, identity.first, identity.second, action)
             c.update("UPDATE board_invitations SET revoked=true WHERE creator_id=?", id)
             if (action == "anonymize") {
                 val replacement = UUID.randomUUID()

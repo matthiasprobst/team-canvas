@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ArrowLeft, Share2, StickyNote } from "lucide-react";
-import { Excalidraw, CaptureUpdateAction, convertToExcalidrawElements } from "@excalidraw/excalidraw";
+import { Excalidraw, MainMenu, CaptureUpdateAction, convertToExcalidrawElements } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import type { Identity } from "./api";
 import { useBoardSession } from "./useBoardSession";
@@ -226,10 +226,17 @@ export default function BoardEditor({ boardId, identity }: { boardId: string; id
           excalidrawAPI={setEditor}
           langCode="en"
           isCollaborating
+          UIOptions={{ canvasActions: { loadScene: false, saveToActiveFile: false, export: false } }}
           viewModeEnabled={!editable}
           onChange={(elements, _appState, files) => onChange(elements, files)}
           onPointerUpdate={({ pointer: position }) => pointer(position.x, position.y)}
-        />
+        >
+          <MainMenu>
+            <MainMenu.DefaultItems.SaveAsImage />
+            <MainMenu.DefaultItems.ClearCanvas />
+            <MainMenu.DefaultItems.ToggleTheme />
+          </MainMenu>
+        </Excalidraw>
       </main>
     </div>
   );

@@ -11,9 +11,10 @@ data class StorageUsage(val elements: Long, val assets: Long)
 
 @ApplicationScoped
 class CanvasLimits @Inject constructor(
-    @ConfigProperty(name = "team-canvas.max-pages", defaultValue = "10") val maxPages: Int = 10,
-    @ConfigProperty(name = "team-canvas.max-owned-canvases", defaultValue = "20") val maxOwned: Int = 20,
+    @ConfigProperty(name = "team-canvas.max-pages", defaultValue = "10") val maxPages: Int,
+    @ConfigProperty(name = "team-canvas.max-owned-canvases", defaultValue = "20") val maxOwned: Int,
 ) {
+    constructor() : this(10, 20)
     init { require(maxPages > 0 && maxOwned > 0) { "Canvas limits must be positive" } }
     fun settings() = LimitSettings(maxPages, maxOwned)
 

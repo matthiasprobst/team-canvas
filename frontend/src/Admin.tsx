@@ -52,7 +52,7 @@ export default function Admin() {
     setBusy(true); setError("");
     try {
       await request(`/api/admin/users/${impact.user.id}/actions`, { action, impactToken: impact.token, confirmation });
-      setNotice(`Account action completed: ${action}.`); setImpact(null); setRefresh(n => n + 1);
+      setNotice(`Account action completed: ${action}. For irreversible offboarding, retain a current offboarding recovery file independently of database backups.`); setImpact(null); setRefresh(n => n + 1);
     } catch (e) { setError(errorMessage(e)); }
     finally { setBusy(false); }
   }
@@ -68,9 +68,10 @@ export default function Admin() {
   const irreversible = action === "delete" || action === "anonymize";
   return <main className="shell max-w-5xl mx-auto p-6">
     <Link className="button" to="/">Back to canvases</Link>
+    <a className="button ml-3" href="/api/admin/offboarding-export">Download offboarding recovery file</a>
     <h1 className="text-2xl font-semibold mt-6">User administration</h1>
     <p className="text-slate-600 my-3">Manage application access and retained canvases. Company SSO access is managed in Keycloak.</p>
-    {error && <p className="error" role="alert">{error}</p>}
+    {error && !impact && <p className="error" role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
     <label className="block my-4">Search users<input className="field block mt-2" value={query} onChange={e => { setQuery(e.target.value); setOffset(0); }} /></label>
     <div className="overflow-x-auto"><table className="w-full text-left"><thead><tr><th className="p-3">User</th><th>Status</th><th>Owned canvases</th><th>Actions</th></tr></thead>
@@ -79,6 +80,7 @@ export default function Admin() {
     {!users.length && <p>No users match this search.</p>}
     <div className="flex gap-3 mt-4"><button className="button" disabled={!offset || busy} onClick={() => setOffset(Math.max(0, offset - 50))}>Previous users</button><button className="button" disabled={nextOffset === null || busy} onClick={() => { if (nextOffset !== null) setOffset(nextOffset); }}>Next users</button></div>
     {impact && <Modal title={`Manage ${impact.user.displayName}`} close={() => { if (!busy) setImpact(null); }}>
+      {error && <p className="error" role="alert">{error}</p>}
       <p>{impact.canvases.length} owned canvases, including templates.</p>
       {impact.canvases.length > 0 && <ul className="list-disc pl-5 my-3">{impact.canvases.map(canvas => <li key={canvas.id}>{canvas.name}</li>)}</ul>}
       {impact.user.status === "placeholder" ? <>

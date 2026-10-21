@@ -17,6 +17,11 @@ class AdminResource @Inject constructor(private val service: AdminService, priva
     @Context lateinit var security: SecurityContext
     private fun actor() = accounts.current(loginIdentity(security.userPrincipal)).id
     private fun id(raw: String) = try { UUID.fromString(raw) } catch (_: IllegalArgumentException) { throw ClientException("bad_request", "Invalid identifier.") }
+    @GET @Path("/offboarding-export")
+    fun offboardingExport(): Response {
+        actor()
+        return Response.ok(service.offboardingExport()).header("Content-Disposition", "attachment; filename=team-canvas-offboarding.json").build()
+    }
     @GET @Path("/users")
     fun users(@QueryParam("offset") @DefaultValue("0") offset: Int, @QueryParam("q") @DefaultValue("") q: String): AdminUsers {
         actor()

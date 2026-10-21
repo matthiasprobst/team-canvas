@@ -16,3 +16,5 @@ For upgrades, put ingress in maintenance mode, stop the backend, back up the dat
 Keep exactly one backend (Recreate); health/metrics are internal. Restrict frontend ingress to your ingress controller. Set trusted proxy CIDRs narrowly. Validate DNS and egress policies for actual managed-service IP ranges. Configure ingress HTTPS redirect, TLS and WebSocket timeouts longer than 45 seconds. The chart's Caddy proxy assumes HTTPS ingress.
 
 Initial-development schema can be recreated only with an explicit reset of disposable data. Startup never cleans a mismatched schema. Historical migrations are not a supported production upgrade path yet. See the operations runbook for recovery and release qualification.
+
+The admin screen exposes a download of keyed offboarding recovery state. Retain it outside PostgreSQL after every irreversible lifecycle operation and preserve the original identity-blocking key ring. See the operations runbook before a restore.
