@@ -38,7 +38,7 @@ The backend supports **one active instance per database** and **ten simultaneous
 
 ## Quick start
 
-Install Docker with the Compose plugin. **Use disposable development data:** the current Compose file enables Flyway schema cleanup if migration validation fails. Persistent volumes do not protect against that reset. Use the [company deployment guide](deploy/kubernetes/README.md) for retained company data. From the repository root:
+Install Docker with the Compose plugin. The bundled Compose setup is for development. Migration validation fails safely without resetting the schema. Use the [company deployment guide](deploy/kubernetes/README.md) for retained company data. From the repository root:
 
 ```sh
 test -f .env || cp .env.example .env
@@ -96,7 +96,7 @@ Owners can revoke invitation links without removing existing members, or additio
 
 ## Development and checks
 
-Use JDK 21, Maven 3.9+, Node.js 22+, and PostgreSQL 17. The full Compose stack is the simplest way to exercise the real sign-in flow. Frontend development against that stack:
+Use JDK 21, Maven 3.9+, Node.js 24+, and PostgreSQL 17. The full Compose stack is the simplest way to exercise the real sign-in flow. Frontend development against that stack:
 
 ```sh
 npm ci --prefix frontend

@@ -1,6 +1,6 @@
 # TC-012: Make startup and schema upgrades non-destructive
 
-Status: Todo
+Status: In progress
 Priority: P0
 Dependencies: TC-011
 
@@ -34,4 +34,4 @@ Commit coherent passing behavior with its tests and docs. Split storage foundati
 
 ## Completion evidence
 
-Pending implementation and validation.
+Implemented non-destructive defaults, standalone migration entry point, production configuration checks and JDK 21 containers. Initial `mvn -o test` passed (36 executed, 17 integration tests skipped before the disposable database was started). Production rejection regression added; database validation follows.
