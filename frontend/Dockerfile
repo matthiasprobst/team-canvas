@@ -1,7 +1,7 @@
 FROM node:24-alpine AS build
 WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci --no-audit --no-fund
+RUN npm install --global npm@11.19.1 && npm ci --no-audit --no-fund
 COPY frontend/ ./
 # Excalidraw fonts must be bundled locally (no external CDN dependency).
 RUN mkdir -p public/fonts && cp -r node_modules/@excalidraw/excalidraw/dist/prod/fonts/. public/fonts/

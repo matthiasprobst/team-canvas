@@ -95,7 +95,7 @@ Page changes are blocked during poker. Navigation protects unsaved edits and dra
 
 ## Development and checks
 
-Use JDK 21, Maven 3.9+, Node.js 24+, and PostgreSQL 17. The full Compose stack is the simplest way to exercise the real sign-in flow. Frontend development against that stack:
+Use JDK 21, Maven 3.9+, Node.js 24 with npm 11.19.1, and PostgreSQL 17. The full Compose stack is the simplest way to exercise the real sign-in flow. Frontend development against that stack:
 
 ```sh
 npm ci --prefix frontend

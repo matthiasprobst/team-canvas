@@ -27,3 +27,9 @@ Deactivate is reversible, anonymize and delete are not. Remove duplicated names 
 ## Required negative tests
 
 Wrong issuer, expiry, missing session, revoked membership, deactivated accounts, old cookies, foreign assets, incorrect capability, unsupported protocol, CSRF/origin rejection, forged proxy headers, quota races, duplicated reveal, late private writes, failed migration, account resurrection after restore, and secret/author leakage.
+
+## Dependency maintenance
+
+Excalidraw 0.18.1 pins vulnerable transitive NanoID/Sass dependencies and parser packages pin lodash-es. The application overrides NanoID within compatible 3.x for Excalidraw and patched 5.x for its Mermaid adapter, updates Sass to eliminate its old chokidar/braces chain, and overrides lodash-es to a patched 4.x. These are toolchain/library resolutions, not new application services. Keep the overrides until upstream constraints permit removing them. Test drawing creation, image binding, templates, and production bundling after updates. Trivy's initial lock scan reported eight high findings; the updated lock scan reported no high/critical findings and no secrets. Release evidence records the exact scanner version and current results.
+
+Build tooling uses Node 24 and npm 11.19.1 consistently in CI and the frontend image. Generate lockfiles from a clean dependency directory using that toolchain; npm 11.6 and 11.19 resolved optional WASI dependencies differently during validation.
