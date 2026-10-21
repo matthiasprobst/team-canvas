@@ -50,17 +50,20 @@ constructor(
     private val policy: AccessPolicy,
     private val limits: RequestLimits,
     private val writer: SingleWriterGuard,
+    private val accounts: Accounts,
 ) : ContainerRequestFilter {
     override fun filter(context: ContainerRequestContext) {
         val path = context.uriInfo.path.trimStart('/')
         if (
             path != "api/boards" &&
                 !path.startsWith("api/boards/") &&
+                !path.startsWith("api/admin/") &&
                 path !in setOf("api/me", "api/logout")
         )
             return
         writer.requireOwner()
         val identity = loginIdentity(context.securityContext.userPrincipal)
+        accounts.current(identity)
         if (
             context.method !in setOf("GET", "HEAD", "OPTIONS") &&
                 !policy.allowsOrigin(context.getHeaderString("Origin"))

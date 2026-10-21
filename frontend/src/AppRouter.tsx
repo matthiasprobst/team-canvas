@@ -22,6 +22,7 @@ import {
 import Dashboard from "./Dashboard";
 import { preserveInvitation } from "./invitation";
 import { errorMessage } from "./ui";
+const Admin = lazy(() => import("./Admin"));
 const Editor = lazy(() => import("./App"));
 function Notice({ children }: { children: React.ReactNode }) {
   return (
@@ -233,6 +234,7 @@ const router = createBrowserRouter([
       { path: "/", element: <Home /> },
       { path: "/b/:id", element: <CanvasRoute /> },
       { path: "/logout", element: <Logout /> },
+      { path: "/admin", element: <Suspense fallback={<Notice>Loading administration…</Notice>}><Admin /></Suspense> },
     ],
   },
   {

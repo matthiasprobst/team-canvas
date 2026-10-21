@@ -9,6 +9,7 @@ class DeploymentSettingsTest {
         issuer = "https://identity.example/realm"
         origins = "https://canvas.example"
         secret = "a".repeat(48)
+        blockingSecret = "b".repeat(48)
         secureCookies = true
         autoMigrate = false
     }

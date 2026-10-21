@@ -21,13 +21,16 @@ class DeploymentSettings {
     @ConfigProperty(name = "quarkus.flyway.migrate-at-start", defaultValue = "true")
     var autoMigrate: Boolean = true
 
+    @ConfigProperty(name = "team-canvas.identity-blocking-secret", defaultValue = "development-only-identity-blocking-secret")
+    lateinit var blockingSecret: String
+
     @PostConstruct
     fun validate() {
         if (!production) return
         require(issuer.startsWith("https://") && origins.split(',').all { it.trim().startsWith("https://") }) {
             "Production issuer and allowed origins must use HTTPS"
         }
-        require(secret.length >= 32 && listOf("development", "REPLACE").none { secret.contains(it, true) }) {
+        require(listOf(secret, blockingSecret).all { value -> value.length >= 32 && listOf("development", "REPLACE").none { value.contains(it, true) } }) {
             "Production requires a persistent random session secret"
         }
         require(secureCookies && !autoMigrate) { "Production requires secure cookies and separate migrations" }

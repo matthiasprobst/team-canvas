@@ -60,8 +60,9 @@ class BoardRepository @Inject constructor(private val dataSource: DataSource, va
                 .prepareStatement(
                     """SELECT 1 FROM participants p JOIN board_sessions s ON s.participant_id=p.id
                     JOIN login_sessions l ON l.user_id=s.user_id AND l.sid=s.sid
+                    JOIN app_users u ON u.id=s.user_id
                     WHERE p.id=? AND p.board_id=? AND p.revoked=false AND s.token_hash=?
-                    AND s.revoked=false AND s.expires_at>now() AND l.revoked=false FOR SHARE OF l,s,p"""
+                    AND s.revoked=false AND s.expires_at>now() AND l.revoked=false AND u.status='active' FOR SHARE OF l,s,p,u"""
                 )
                 .use { statement ->
                     statement.setObject(1, who.id)

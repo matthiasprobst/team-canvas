@@ -315,6 +315,17 @@ constructor(
             .forEach { it.close(1008, "Signed out") }
     }
 
+    fun disconnectAccount(issuer: String, subject: String) {
+        peers.values.filter { it.identity.issuer == issuer && it.identity.subject == subject }
+            .forEach { it.close(1008, "Account access removed") }
+    }
+
+    fun ownershipChanged(id: UUID) = synchronized(lock(id)) {
+        audience(id).forEach { it.close(1008, "Ownership changed. Reopen this canvas.") }
+    }
+
+    fun deletedByAdmin(id: UUID) = delete(id) { }
+
     fun rename(id: UUID, action: () -> String): String =
         synchronized(lock(id)) {
             val name = action()

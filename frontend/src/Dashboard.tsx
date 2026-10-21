@@ -125,7 +125,8 @@ export default function Dashboard({ user }: { user: Account }) {
             </span>
             <span className="truncate text-sm font-medium">{user.displayName}</span>
           </div>
-          <Link to="/logout" className="flex items-center gap-2 text-sm text-slate-500 mt-4 no-underline">
+          {user.admin && <Link className="button" to="/admin">User administration</Link>}
+            <Link to="/logout" className="flex items-center gap-2 text-sm text-slate-500 mt-4 no-underline">
             <LogOut size={16} />
             Sign out
           </Link>

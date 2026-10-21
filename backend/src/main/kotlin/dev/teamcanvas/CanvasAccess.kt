@@ -19,8 +19,8 @@ constructor(private val repository: BoardRepository, private val accounts: Accou
         val title = canvasName(name)
         val user = accounts.current(identity)
         return repository.transaction { c ->
-            accounts.requireLogin(c, user.id, identity.sid)
             repository.limits.requireOwnedSlot(c, user.id)
+            accounts.requireLogin(c, user.id, identity.sid)
             val id = UUID.randomUUID()
             c.update("INSERT INTO boards(id,name,owner_user_id) VALUES(?,?,?)", id, title, user.id)
             c.update(
@@ -103,7 +103,7 @@ constructor(private val repository: BoardRepository, private val accounts: Accou
                 JOIN app_users u ON u.id=s.user_id
                 JOIN login_sessions l ON l.user_id=s.user_id AND l.sid=s.sid
                 WHERE p.board_id=? AND s.token_hash=? AND u.issuer=? AND u.subject=? AND s.sid=?
-                AND NOT p.revoked AND NOT s.revoked AND NOT l.revoked AND s.expires_at>now()""",
+                AND NOT p.revoked AND NOT s.revoked AND NOT l.revoked AND s.expires_at>now() AND u.status='active'""",
                 id,
                 Security.hash(token),
                 identity.issuer,

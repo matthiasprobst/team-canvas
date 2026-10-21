@@ -178,6 +178,7 @@ constructor(
         val user = accounts.current(identity)
         return repository.transaction { c ->
             repository.board(c, id)
+            repository.limits.requireOwnedSlot(c, user.id)
             accounts.requireLogin(c, user.id, identity.sid)
             val visibility = c.query(
                 "SELECT template_visibility FROM boards WHERE id=?",
@@ -188,7 +189,6 @@ constructor(
             if (visibility == null || (visibility != "public" && sourceOwner(c, id) != user.id))
                 throw ClientException("not_found", "Template not found or access is unavailable.")
 
-            repository.limits.requireOwnedSlot(c, user.id)
             val title = canvasName(name)
             val copyId = UUID.randomUUID()
             val participantId = UUID.randomUUID()

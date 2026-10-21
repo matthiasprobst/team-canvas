@@ -1,6 +1,6 @@
 # TC-022: Delete users and every canvas they own
 
-Status: Todo
+Status: In review
 Priority: P1
 Dependencies: TC-021
 
@@ -34,4 +34,4 @@ Commit coherent passing behavior with its tests and docs. Split storage foundati
 
 ## Completion evidence
 
-Pending implementation and validation.
+Implemented role-protected administration, immediate deactivation, keyed identity blocking, anonymization, retained-canvas reassignment and distinct owned-canvas deletion. PostgreSQL/backend suite: 62 passed, no skips. Lifecycle tests include stale previews, confirmation, self-protection and concurrent provisioning. Frontend type-check passed; real SSO/browser role checks pending.

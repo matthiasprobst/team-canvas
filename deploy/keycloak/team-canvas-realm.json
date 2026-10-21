@@ -73,6 +73,36 @@
           "temporary": false
         }
       ]
+    },
+    {
+      "username": "carol",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "carol@example.test",
+      "firstName": "Carol",
+      "lastName": "Test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "carol-dev-only",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "dave",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "dave@example.test",
+      "firstName": "Dave",
+      "lastName": "Test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dave-dev-only",
+          "temporary": false
+        }
+      ]
     }
   ],
   "roles": {

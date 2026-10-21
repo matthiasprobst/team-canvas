@@ -137,13 +137,13 @@ Keycloak is the documented SSO target and the provider used by the automated tes
 
 Private poker content is hidden from other participants, including the canvas owner, until publication. The application server and database administrators can access stored content: this is server-enforced privacy, not end-to-end encryption. Fonts are served locally and the supplied browser content policy restricts connections to the application origin. Operators manage HTTPS, database/backup encryption, access to infrastructure, and retention.
 
-An invitation grants editing membership. A public template can be copied by every user admitted to this deployment; making it private or deleting it later does not remove existing copies. There is no read-only sharing role, automatic retention, account-erasure workflow, or ownership-transfer workflow. Deleting a canvas removes its live contents and invitations; database backups follow the operator's retention policy. Draft export is a recovery aid for the current page/draft, not a complete multi-page canvas backup.
+An invitation grants editing membership. A public template can be copied by every user admitted to this deployment; making it private or deleting it later does not remove existing copies. There is no read-only sharing role or automatic canvas retention. Administrators with the Keycloak client role `team-canvas-admin` can deactivate users, anonymize identity while retaining canvases under `deleted_user_N`, delete a user and every owned canvas, or reassign retained canvases. Deletion affects shared canvases owned by that user too; unattributed drawings on other owners’ canvases remain. Deleting a canvas removes its live contents and invitations; database backups follow the operator's retention policy. Draft export is a recovery aid for the current page/draft, not a complete multi-page canvas backup.
 
 The application does not seed sample canvases. Published application images contain no canvas data or demo accounts; Alice and Bob belong to the development Keycloak realm only. Use a separate production database and company identity provider, without copying development/test volumes or importing the development realm.
 
 Run one backend replica with `Recreate` updates. The database ownership guard rejects overlapping backends; horizontal backend scaling is not supported. Define database backup, restore, monitoring, and retention procedures before admitting company data.
 
-The dashboard migration retains old scene rows but does not claim legacy guest canvases. Create new account-owned canvases after upgrading. Read the [upgrade notes](docs/upgrading.md) before using an existing database.
+The initial-development schema has been consolidated. An existing schema checksum mismatch fails startup safely; explicitly recreate only disposable development data when needed. Read the [upgrade notes](docs/upgrading.md) before using an existing database.
 
 ## Project structure
 
@@ -184,3 +184,11 @@ Never commit `.env`, access tokens, invitation secrets, or real deployment crede
 ## License
 
 [MIT](LICENSE). Third-party libraries, images, and fonts retain their own licenses and notices.
+
+## User administration
+
+The **User administration** link appears for users with the validated Keycloak client role `team-canvas-admin`. Company deployments must add this role to the configured client and assign it deliberately. Local development Alice has the role; Bob does not. Administrative access does not grant a private-poker inspection API.
+
+Deactivate removes access immediately and retains data. Reactivate requires a fresh SSO login. Anonymize is irreversible in the live database and preserves owned canvases under a non-login replacement owner. Delete permanently removes the account and all owned canvases/templates after an impact preview and typed confirmation, including shared work owned by that account. Backups and company logs follow their retention policy. Disable company Keycloak access as part of offboarding too.
+
+Set a stable, random `IDENTITY_BLOCKING_SECRET` of at least 32 characters in production; keep it outside the database. It protects irreversible identity-blocking fingerprints. During rotation retain previous verification keys through `TEAM_CANVAS_IDENTITY_BLOCKING_PREVIOUS_SECRETS` until their blocking records are retired. Losing these keys or restoring stale offboarding state can permit reprovisioning.
