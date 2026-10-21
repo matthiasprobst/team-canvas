@@ -1,0 +1,17 @@
+# Required company settings; credentials are provisioned separately.
+images:
+  backend: ""
+  frontend: ""
+existingSecret: ""
+migrationSecret: ""
+host: ""
+tlsSecret: ""
+ingressClassName: ""
+trustedProxies: ""
+databaseCIDR: ""
+identityCIDR: ""
+limits:
+  maxPagesPerCanvas: 10
+  maxOwnedCanvasesPerUser: 20
+# Render/run migration Job separately while the backend is stopped.
+runMigration: false

@@ -7,7 +7,7 @@ import java.util.UUID
 import javax.sql.DataSource
 
 @ApplicationScoped
-class BoardRepository @Inject constructor(private val dataSource: DataSource) {
+class BoardRepository @Inject constructor(private val dataSource: DataSource, val limits: CanvasLimits = CanvasLimits()) {
     fun <T> transaction(action: (Connection) -> T): T =
         dataSource.connection.use { connection ->
             connection.autoCommit = false

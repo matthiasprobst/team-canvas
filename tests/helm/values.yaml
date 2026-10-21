@@ -1,0 +1,11 @@
+images:
+  backend: registry.test/backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  frontend: registry.test/frontend@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+existingSecret: runtime-test
+migrationSecret: migration-test
+host: canvas.test
+tlsSecret: canvas-tls
+ingressClassName: nginx
+trustedProxies: 10.20.0.0/16
+databaseCIDR: 10.30.0.0/24
+identityCIDR: 10.40.0.0/24

@@ -1,6 +1,6 @@
 # TC-013: Enforce configurable ownership, page, and storage quotas
 
-Status: Todo
+Status: In review
 Priority: P1
 Dependencies: TC-012
 
@@ -17,7 +17,7 @@ Enforce configurable ownership, page, and storage quotas. Follow the agreed cont
 
 ## Interfaces and migrations
 
-Use forward-only migrations; never rewrite applied migrations or reset data. Keep frontend/backend protocol and fixtures aligned. Preserve existing content; migration prerequisites must fail safely. See the security and operations documents for the cross-cutting contracts.
+Initial development: schema files may be consolidated. Reset only explicitly disposable data; startup must never clean it automatically. Keep frontend/backend protocol and fixtures aligned. Preserve existing content; migration prerequisites must fail safely. See the security and operations documents for the cross-cutting contracts.
 
 ## Acceptance criteria
 
@@ -35,4 +35,6 @@ Commit coherent passing behavior with its tests and docs. Split storage foundati
 
 ## Completion evidence
 
-Pending implementation and validation.
+Implemented configurable backend limits, account locking, aggregate storage checks and authenticated limit metadata. Concurrent quota and lowered-limit regression tests added.
+
+Validation checkpoint: 56 backend tests passed with PostgreSQL 17 and no skips. Helm lint/render passed with overrides; maxPagesPerCanvas=0 was rejected. A live Kubernetes deployment and least-privilege role validation remain release checks.

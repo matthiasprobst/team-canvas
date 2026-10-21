@@ -21,8 +21,10 @@ class CanvasPageService @Inject constructor(
         }
         RoundRules.requireContext(state, context)
         requirePagesOpen(state)
+        val previousUsage = repository.limits.usage(connection, who.boardId)
         val pageId = UUID.randomUUID()
         val position = repository.pages(connection, who.boardId).size
+        repository.limits.requirePageSlot(position)
         connection.prepareStatement(
             "INSERT INTO canvas_pages(id,board_id,position,created_by) VALUES(?,?,?,?)",
         ).use {
@@ -33,6 +35,7 @@ class CanvasPageService @Inject constructor(
             it.executeUpdate()
         }
         if (copyCurrent) copyPage(connection, who, state, pageId, includePoker)
+        repository.limits.requireStorage(connection, who.boardId, previousUsage)
         connection.prepareStatement(
             "UPDATE boards SET current_page_id=?,epoch=epoch+1 WHERE id=?",
         ).use {

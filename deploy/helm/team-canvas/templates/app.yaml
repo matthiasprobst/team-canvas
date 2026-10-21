@@ -1,0 +1,174 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-backend
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {app: {{ .Release.Name }}-backend}
+  template:
+    metadata:
+      labels: {app: {{ .Release.Name }}-backend}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: {{ .Release.Name }}-backend
+          image: {{ .Values.images.backend | quote }}
+          ports: [{name: http, containerPort: 8080}]
+          envFrom: [{secretRef: {name: {{ .Values.existingSecret }}}}]
+          env:
+            - {name: TEAM_CANVAS_PRODUCTION, value: "true"}
+            - {name: TEAM_CANVAS_MIGRATE_AT_START, value: "false"}
+            - {name: TEAM_CANVAS_MAX_PAGES, value: {{ .Values.limits.maxPagesPerCanvas | quote }}}
+            - {name: TEAM_CANVAS_MAX_OWNED_CANVASES, value: {{ .Values.limits.maxOwnedCanvasesPerUser | quote }}}
+            - {name: QUARKUS_OIDC_AUTHENTICATION_COOKIE_FORCE_SECURE, value: "true"}
+            - {name: TEAM_CANVAS_ALLOWED_ORIGINS, value: "https://{{ .Values.host }}"}
+            # Use the actual frontend pod CIDR/proxy addresses; never trust arbitrary clients.
+            - {name: TRUSTED_PROXIES, value: {{ .Values.trustedProxies | quote }}}
+          resources:
+            requests: {cpu: 250m, memory: 384Mi}
+            limits: {cpu: "2", memory: 1Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+          startupProbe:
+            httpGet: {path: /q/health/started, port: http}
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet: {path: /q/health/ready, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /q/health/live, port: http}
+            periodSeconds: 10
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 128Mi}}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: {{ .Release.Name }}-backend}
+spec:
+  selector: {app: {{ .Release.Name }}-backend}
+  ports: [{name: http, port: 8080, targetPort: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: {{ .Release.Name }}-frontend}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: {{ .Release.Name }}-frontend}
+  template:
+    metadata:
+      labels: {app: {{ .Release.Name }}-frontend}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: {{ .Release.Name }}-frontend
+          image: {{ .Values.images.frontend | quote }}
+          command: [caddy]
+          args: [run, --config, /etc/caddy/Caddyfile, --adapter, caddyfile]
+          # Unprivileged port configured through the mounted Caddyfile below.
+          ports: [{name: http, containerPort: 8080}]
+          resources:
+            requests: {cpu: 50m, memory: 32Mi}
+            limits: {cpu: 500m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: caddyfile, mountPath: /etc/caddy/Caddyfile, subPath: Caddyfile, readOnly: true}
+            - {name: data, mountPath: /data}
+            - {name: config, mountPath: /config}
+          readinessProbe:
+            httpGet: {path: /, port: http}
+          livenessProbe:
+            httpGet: {path: /, port: http}
+      volumes:
+        - name: caddyfile
+          configMap: {name: {{ .Release.Name }}-caddy}
+        - {name: data, emptyDir: {sizeLimit: 16Mi}}
+        - {name: config, emptyDir: {sizeLimit: 16Mi}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: {{ .Release.Name }}-frontend}
+spec:
+  selector: {app: {{ .Release.Name }}-frontend}
+  ports: [{name: http, port: 80, targetPort: http}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: {{ .Release.Name }}}
+spec:
+  ingressClassName: {{ .Values.ingressClassName }}
+  tls:
+    - hosts: [{{ .Values.host }}]
+      secretName: {{ .Values.tlsSecret }}
+  rules:
+    - host: {{ .Values.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: {{ .Release.Name }}-frontend, port: {name: http}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: {{ .Release.Name }}-backend}
+spec:
+  podSelector:
+    matchLabels: {app: {{ .Release.Name }}-backend}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {app: {{ .Release.Name }}-frontend}
+      ports: [{protocol: TCP, port: 8080}]
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: {{ .Release.Name }}-caddy}
+data:
+  Caddyfile: |
+{{ .Files.Get "files/Caddyfile" | replace "backend:8080" (printf "%s-backend:8080" .Release.Name) | indent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: {{ .Release.Name }}-backend-egress}
+spec:
+  podSelector:
+    matchLabels: {app: {{ .Release.Name }}-backend}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock: {cidr: {{ .Values.databaseCIDR }}}
+      ports: [{protocol: TCP, port: 5432}]
+    - to:
+        - ipBlock: {cidr: {{ .Values.identityCIDR }}}
+      ports: [{protocol: TCP, port: 443}]
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {k8s-app: kube-dns}
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]

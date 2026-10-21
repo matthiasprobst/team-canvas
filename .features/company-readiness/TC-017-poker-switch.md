@@ -15,11 +15,11 @@ Replace readiness poker with member-operated reveal. Follow the agreed contracts
 - [ ] Remove readiness, rosters, done, and ordinary cancellation controls.
 - [ ] Preserve stale private writes for local recovery; never silently publish them.
 - [ ] Reject old protocol versions and update frontend/backend together.
-- [ ] Require finishing legacy active rounds before upgrade.
+- [ ] Consolidate the initial schema; document explicit disposable-data reset.
 
 ## Interfaces and migrations
 
-Use forward-only migrations; never rewrite applied migrations or reset data. Keep frontend/backend protocol and fixtures aligned. Preserve existing content; migration prerequisites must fail safely. See the security and operations documents for the cross-cutting contracts.
+Initial development: schema files may be consolidated. Reset only explicitly disposable data; startup must never clean it automatically. Keep frontend/backend protocol and fixtures aligned. Preserve existing content; migration prerequisites must fail safely. See the security and operations documents for the cross-cutting contracts.
 
 ## Acceptance criteria
 

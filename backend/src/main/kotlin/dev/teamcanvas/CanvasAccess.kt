@@ -20,6 +20,7 @@ constructor(private val repository: BoardRepository, private val accounts: Accou
         val user = accounts.current(identity)
         return repository.transaction { c ->
             accounts.requireLogin(c, user.id, identity.sid)
+            repository.limits.requireOwnedSlot(c, user.id)
             val id = UUID.randomUUID()
             c.update("INSERT INTO boards(id,name,owner_user_id) VALUES(?,?,?)", id, title, user.id)
             c.update(

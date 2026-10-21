@@ -55,6 +55,32 @@ class BoardStoreIntegrationTest {
             }
     }
 
+
+    @Test
+    fun `configured quotas reject concurrent ownership growth and excess pages without deleting data`() {
+        val repository = BoardRepository(dataSource, CanvasLimits(2, 2))
+        val limitedAccounts = Accounts(repository)
+        val limitedAccess = CanvasAccess(repository, limitedAccounts)
+        val owner = user()
+        val pool = Executors.newFixedThreadPool(4)
+        try {
+            val attempts = (1..4).map { n -> pool.submit<Boolean> {
+                try { limitedAccess.create("Quota $n", owner); true }
+                catch (error: ClientException) { assertEquals("limit", error.code); false }
+            } }
+            assertEquals(2, attempts.count { it.get() })
+        } finally { pool.shutdownNow() }
+        val canvas = CanvasCatalog(repository, limitedAccounts, limitedAccess).list(owner, "mine", "", "recent", 10, null).items.first()
+        val joined = limitedAccess.join(canvas.id, JoinRequest(), owner)
+        val who = limitedAccess.authenticate(canvas.id, joined.token, owner)
+        val limitedPages = CanvasPageService(repository, SceneRepository(json))
+        limitedPages.create(who, context(who), false, false)
+        error("limit") { limitedPages.create(who, context(who), false, false) }
+        assertEquals(2, store.snapshot(who).pages.size)
+        val lowered = BoardRepository(dataSource, CanvasLimits(1, 1))
+        assertEquals(2, BoardStore(lowered, SceneRepository(json), json).snapshot(who).pages.size)
+    }
+
     private data class Room(
         val board: CreatedBoard,
         val host: Participant,

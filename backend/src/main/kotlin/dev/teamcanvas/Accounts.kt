@@ -9,7 +9,7 @@ import org.eclipse.microprofile.jwt.JsonWebToken
 
 data class LoginIdentity(val issuer: String, val subject: String, val sid: String, val name: String)
 
-data class Account(val id: UUID, val displayName: String)
+data class Account(val id: UUID, val displayName: String, val limits: LimitSettings = LimitSettings(10, 20), val admin: Boolean = false)
 
 /** Accept identities only from the JWT principal validated by Quarkus OIDC. */
 fun loginIdentity(principal: Principal?): LoginIdentity {
@@ -58,7 +58,7 @@ class Accounts @Inject constructor(private val repository: BoardRepository) {
                 identity.sid,
             )
             requireLogin(connection, account.id, identity.sid)
-            account
+            account.copy(limits = repository.limits.settings())
         }
 
     fun requireLogin(connection: Connection, userId: UUID, sid: String) {

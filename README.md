@@ -132,7 +132,7 @@ CI runs frontend checks, backend tests with PostgreSQL, container builds, authen
 
 ## Company deployment
 
-Use company-managed Keycloak and the [Kubernetes deployment guide](deploy/kubernetes/README.md). All data APIs, assets, and WebSocket upgrades require sign-in. There is no supported guest-mode bypass. OIDC tokens remain in server-managed HttpOnly cookies; app accounts use verified issuer/subject identity and board sessions are also bound to the Keycloak login session.
+Use company-managed Keycloak and the [Helm deployment guide](deploy/helm/README.md). All data APIs, assets, and WebSocket upgrades require sign-in. There is no supported guest-mode bypass. OIDC tokens remain in server-managed HttpOnly cookies; app accounts use verified issuer/subject identity and board sessions are also bound to the Keycloak login session.
 
 Keycloak is the documented SSO target and the provider used by the automated test suite; direct compatibility with other OIDC providers is not established. Kubernetes is the supplied company deployment template, not an application requirement. A production Compose configuration is not supplied.
 

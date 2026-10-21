@@ -17,7 +17,7 @@ Introduce unlinked private-draft persistence. Follow the agreed contracts in [th
 
 ## Interfaces and migrations
 
-Use forward-only migrations; never rewrite applied migrations or reset data. Keep frontend/backend protocol and fixtures aligned. Preserve existing content; migration prerequisites must fail safely. See the security and operations documents for the cross-cutting contracts.
+Initial development: schema files may be consolidated. Reset only explicitly disposable data; startup must never clean it automatically. Keep frontend/backend protocol and fixtures aligned. Preserve existing content; migration prerequisites must fail safely. See the security and operations documents for the cross-cutting contracts.
 
 ## Acceptance criteria
 

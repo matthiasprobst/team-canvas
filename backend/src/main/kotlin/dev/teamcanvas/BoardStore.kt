@@ -74,6 +74,7 @@ constructor(
                 if (round == null || !round.included || round.done)
                     throw ClientException("locked", "Your contribution is locked.")
             }
+            val previousUsage = repository.limits.usage(connection, who.boardId)
             val existingElements = scenes.sizes(connection, SceneTable.ELEMENTS, who.boardId, state.pageId)
             val existingAssets = scenes.sizes(connection, SceneTable.ASSETS, who.boardId, state.pageId)
             if (
@@ -152,6 +153,7 @@ constructor(
                 state.roundId,
                 state.pageId,
             )
+            repository.limits.requireStorage(connection, who.boardId, previousUsage)
             val ack = repository.commitCommand(connection, who, context.commandId)
             if (scope == "private") scenes.updateDraftRevision(connection, who, state.roundId, ack.revision)
             PatchResult(CommandResult(ack), scope)

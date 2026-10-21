@@ -6,6 +6,8 @@ export interface Identity {
   token: string;
 }
 export interface Account {
+  limits?: { maxPagesPerCanvas: number; maxOwnedCanvasesPerUser: number };
+  admin?: boolean;
   id: string;
   displayName: string;
 }

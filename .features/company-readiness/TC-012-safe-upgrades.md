@@ -1,6 +1,6 @@
 # TC-012: Make startup and schema upgrades non-destructive
 
-Status: In progress
+Status: In review
 Priority: P0
 Dependencies: TC-011
 
@@ -17,7 +17,7 @@ Make startup and schema upgrades non-destructive. Follow the agreed contracts in
 
 ## Interfaces and migrations
 
-Use forward-only migrations; never rewrite applied migrations or reset data. Keep frontend/backend protocol and fixtures aligned. Preserve existing content; migration prerequisites must fail safely. See the security and operations documents for the cross-cutting contracts.
+Initial development: schema files may be consolidated. Reset only explicitly disposable data; startup must never clean it automatically. Keep frontend/backend protocol and fixtures aligned. Preserve existing content; migration prerequisites must fail safely. See the security and operations documents for the cross-cutting contracts.
 
 ## Acceptance criteria
 
@@ -35,3 +35,5 @@ Commit coherent passing behavior with its tests and docs. Split storage foundati
 ## Completion evidence
 
 Implemented non-destructive defaults, standalone migration entry point, production configuration checks and JDK 21 containers. Initial `mvn -o test` passed (36 executed, 17 integration tests skipped before the disposable database was started). Production rejection regression added; database validation follows.
+
+Validation checkpoint: 56 backend tests passed with PostgreSQL 17 and no skips. Helm lint/render passed with overrides; maxPagesPerCanvas=0 was rejected. A live Kubernetes deployment and least-privilege role validation remain release checks.

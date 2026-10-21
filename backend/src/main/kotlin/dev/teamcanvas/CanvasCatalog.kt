@@ -187,6 +187,7 @@ constructor(
             if (visibility == null || (visibility != "public" && sourceOwner(c, id) != user.id))
                 throw ClientException("not_found", "Template not found or access is unavailable.")
 
+            repository.limits.requireOwnedSlot(c, user.id)
             val title = canvasName(name)
             val copyId = UUID.randomUUID()
             val participantId = UUID.randomUUID()
@@ -233,6 +234,7 @@ constructor(
                 copyId,
                 id,
             )
+            repository.limits.requireStorage(c, copyId)
             CreatedBoard(copyId, title)
         }
     }
