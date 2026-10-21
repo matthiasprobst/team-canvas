@@ -4,7 +4,6 @@ import jakarta.enterprise.context.ApplicationScoped
 import jakarta.inject.Inject
 import java.security.Principal
 import java.sql.Connection
-import java.sql.ResultSet
 import java.util.UUID
 import org.eclipse.microprofile.jwt.JsonWebToken
 
@@ -35,18 +34,6 @@ fun loginIdentity(principal: Principal?): LoginIdentity {
             .take(48)
     return LoginIdentity(issuer, subject, sid, name)
 }
-
-internal fun Connection.update(sql: String, vararg values: Any?): Int =
-    prepareStatement(sql).use { statement ->
-        values.forEachIndexed { i, value -> statement.setObject(i + 1, value) }
-        statement.executeUpdate()
-    }
-
-internal fun <T> Connection.query(sql: String, vararg values: Any?, read: (ResultSet) -> T): T =
-    prepareStatement(sql).use { statement ->
-        values.forEachIndexed { i, value -> statement.setObject(i + 1, value) }
-        statement.executeQuery().use(read)
-    }
 
 @ApplicationScoped
 class Accounts @Inject constructor(private val repository: BoardRepository) {

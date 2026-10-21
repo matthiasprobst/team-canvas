@@ -24,6 +24,7 @@ class BoardStoreIntegrationTest {
     private lateinit var accounts: Accounts
     private lateinit var catalog: CanvasCatalog
     private lateinit var rounds: RoundService
+    private lateinit var pages: CanvasPageService
 
     @BeforeAll
     fun setup() {
@@ -36,8 +37,9 @@ class BoardStoreIntegrationTest {
             }
         Flyway.configure().dataSource(dataSource).schemas(schema).load().migrate()
         val repository = BoardRepository(dataSource)
-        store = BoardStore(repository, json)
+        store = BoardStore(repository, SceneRepository(json), json)
         rounds = RoundService(repository)
+        pages = CanvasPageService(repository, SceneRepository(json))
         accounts = Accounts(repository)
         access = CanvasAccess(repository, accounts)
         catalog = CanvasCatalog(repository, accounts, access)
@@ -99,6 +101,68 @@ class BoardStoreIntegrationTest {
 
     private fun error(code: String, action: () -> Unit) {
         assertEquals(code, assertThrows(ClientException::class.java, action).code)
+    }
+
+    @Test
+    fun `pages copy independent drawings and images while selection enforces current context`() {
+        val room = room()
+        val first = store.snapshot(room.host).board.pageId
+        val image = json.readTree(
+            """{"id":"file","mimeType":"image/png","created":1,"dataURL":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4//8/AwAI/AL+Skg5VwAAAABJRU5ErkJggg=="}"""
+        )
+        val drawing = (shape("image") as com.fasterxml.jackson.databind.node.ObjectNode).put("type", "image").put("fileId", "file")
+        store.patch(room.host, context(room.host), listOf(shape("original"), drawing), mapOf("file" to image))
+        val old = context(room.host)
+        val created = pages.create(room.guest, context(room.guest), true, false)
+        assertTrue(created.transitioned)
+        val copied = store.snapshot(room.host)
+        assertEquals(2, copied.pages.size)
+        assertEquals(copied.board.pageId, store.snapshot(room.guest).board.pageId)
+        assertNotEquals(first, copied.board.pageId)
+        assertEquals(2, copied.elements.size)
+        assertTrue(copied.elements.none { it.path("id").asText() in setOf("original", "image") })
+        val copiedFile = copied.fileIds.single()
+        assertNotEquals("file", copiedFile)
+        assertEquals(copiedFile, store.asset(room.guest, copiedFile).path("id").asText())
+        error("stale_round") { store.patch(room.host, old, listOf(shape("stale")), emptyMap()) }
+        error("not_found") { pages.select(room.host, context(room.host), UUID.randomUUID()) }
+        val selection = context(room.host)
+        val selected = pages.select(room.host, selection, first)
+        assertTrue(selected.transitioned)
+        assertTrue(pages.select(room.host, selection, first).duplicate)
+        assertEquals(setOf("original", "image"), store.snapshot(room.host).elements.map { it.path("id").asText() }.toSet())
+        val noOp = context(room.host)
+        val unchanged = pages.select(room.host, noOp, first)
+        assertFalse(unchanged.transitioned)
+        assertEquals(unchanged.ack, pages.select(room.host, noOp, first).ack)
+        val blank = context(room.host)
+        pages.create(room.host, blank, false, false)
+        assertTrue(store.snapshot(room.host).elements.isEmpty())
+        assertTrue(pages.create(room.host, blank, false, false).duplicate)
+        assertEquals(3, store.snapshot(room.host).pages.size)
+    }
+
+    @Test
+    fun `page changes are locked during poker and copies can omit published poker drawings`() {
+        val room = room()
+        store.patch(room.host, context(room.host), listOf(shape("public")), emptyMap())
+        val first = store.snapshot(room.host).board.pageId
+        rounds.start(room.host, context(room.host), setOf(room.host.id, room.guest.id))
+        error("poker_active") { pages.create(room.host, context(room.host), false, false) }
+        error("poker_active") { pages.select(room.guest, context(room.guest), first) }
+        val patch = store.patch(room.guest, context(room.guest), listOf(shape("poker")), emptyMap())
+        rounds.ready(room.guest, context(room.guest), patch.result.ack.revision)
+        rounds.ready(room.host, context(room.host), 0)
+        assertEquals(listOf("poker"), store.snapshot(room.host).pokerCreatedIds)
+        pages.create(room.host, context(room.host), true, false)
+        assertEquals(1, store.snapshot(room.host).elements.size)
+        assertTrue(store.snapshot(room.host).pokerCreatedIds.isEmpty())
+        pages.select(room.host, context(room.host), first)
+        pages.create(room.host, context(room.host), true, true)
+        assertEquals(2, store.snapshot(room.host).elements.size)
+        assertEquals(1, store.snapshot(room.host).pokerCreatedIds.size)
+        access.revoke(room.board.id, room.owner, true)
+        error("unauthorized") { pages.create(room.guest, context(room.host), false, false) }
     }
 
     @Test

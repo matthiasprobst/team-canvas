@@ -19,7 +19,11 @@ class BoardRepository @Inject constructor(private val dataSource: DataSource) {
                 connection.commit()
                 result
             } catch (error: Exception) {
-                connection.rollback()
+                try {
+                    connection.rollback()
+                } catch (rollbackError: Exception) {
+                    error.addSuppressed(rollbackError)
+                }
                 throw error
             }
         }
@@ -149,7 +153,7 @@ class BoardRepository @Inject constructor(private val dataSource: DataSource) {
                         rows.getLong(1)
                     }
                 }
-        if (count >= 50_000) throw ClientException("daily_limit", "Daily change limit reached.")
+        if (count >= BoardLimits.COMMANDS_PER_DAY) throw ClientException("daily_limit", "Daily change limit reached.")
         val revision =
             connection
                 .prepareStatement(

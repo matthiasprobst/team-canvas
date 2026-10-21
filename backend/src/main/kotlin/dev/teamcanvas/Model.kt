@@ -78,7 +78,7 @@ data class SceneSnapshot(
 
 data class CommandContext(val commandId: UUID, val epoch: Long, val roundId: UUID?, val pageId: UUID)
 
-data class CommandAck(val type: String = "ack", val commandId: UUID, val revision: Long)
+data class CommandAck(val type: String = "ack", val commandId: UUID, val revision: Long) : ServerEvent
 
 data class CommandResult(
     val ack: CommandAck,
