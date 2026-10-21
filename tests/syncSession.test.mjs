@@ -4,11 +4,20 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { SyncSession } = require('../.test-build/syncSession.js');
 const box = (id, x = 0) => ({ id, type: 'rectangle', x, y: 0, width: 10, height: 10 });
-const snapshot = (poker = false) => ({
-  board: { id: 'board', name: 'Test', mode: poker ? 'poker' : 'standard', roundId: poker ? 'round' : null, epoch: poker ? 1 : 0, revision: 0 },
-  round: poker ? { id: 'round', done: false, included: true, draftRevision: 0, members: [{ id: 'me', name: 'Me', done: false }, { id: 'other', name: 'Other', done: false }] } : null,
-  elements: [box('public')], publicIds: ['public'], fileIds: [], participantId: 'me', role: 'host',
-});
+import { snapshot as protocolSnapshot } from './fixtures.mjs';
+const snapshot = (poker = false) => {
+  const state = protocolSnapshot(poker);
+  state.board.id = 'board';
+  state.board.roundId = poker ? 'round' : null;
+  state.elements = [box('public')];
+  state.publicIds = ['public'];
+  state.participantId = 'me';
+  if (poker) {
+    state.round.id = 'round';
+    state.round.members = [{ id: 'me', name: 'Me', done: false }, { id: 'other', name: 'Other', done: false }];
+  }
+  return state;
+};
 function client(poker = false) {
   const sent = [];
   let n = 0;
@@ -187,4 +196,66 @@ test('renaming during poker preserves unacknowledged edits and frozen readiness'
   assert.equal(session.view().snapshot.round.members.length, 2);
   accepted(session, sent[0], 1, 'private');
   assert.equal(session.view().unsaved, false);
+});
+
+test('duplicate control acknowledgement followed by a snapshot completes a retried no-op page selection', () => {
+  const { session, sent } = client();
+  const state = snapshot();
+  session.selectPage(state.board.pageId);
+  const command = sent[0];
+  session.disconnected();
+  state.board.revision = 1;
+  session.receive({ type: 'snapshot', data: state });
+  assert.deepEqual(sent[1], command);
+  session.receive({ type: 'ack', commandId: command.commandId, revision: 1 });
+  assert.equal(session.view().busy, true);
+  session.receive({ type: 'snapshot', data: state });
+  assert.equal(session.view().busy, false);
+  assert.equal(session.view().unsaved, false);
+  session.localChange([box('public', 8)], {});
+  session.flush();
+  assert.equal(sent.at(-1).type, 'patch');
+});
+
+test('page selection waits for pending edits and a page transition preserves unconfirmed edits as recovery', () => {
+  const { session, sent } = client();
+  session.localChange([box('public', 9)], {});
+  session.selectPage('next-page');
+  assert.equal(sent[0].type, 'patch');
+  accepted(session, sent[0], 1);
+  assert.equal(sent[1].type, 'select_page');
+  const next = snapshot();
+  next.board.pageId = 'next-page';
+  next.board.epoch = 1;
+  next.board.revision = 2;
+  next.elements = [];
+  session.receive({ type: 'ack', commandId: sent[1].commandId, revision: 2 });
+  session.receive({ type: 'snapshot', data: next });
+  assert.equal(session.view().busy, false);
+  assert.deepEqual(session.view().elements, []);
+
+  const other = client();
+  other.session.localChange([box('public', 12)], {});
+  other.session.receive({ type: 'snapshot', data: next });
+  other.session.flush();
+  assert.equal(other.sent.length, 0);
+  assert.equal(other.session.view().recovery[0].x, 12);
+});
+
+test('page actions are blocked during poker and retrying a completed transition does not replay drafts', () => {
+  const { session, sent } = client(true);
+  session.createPage(true, true);
+  session.selectPage('other-page');
+  assert.equal(sent.length, 0);
+  session.control('cancel_round');
+  const command = sent[0];
+  session.disconnected();
+  const state = snapshot();
+  state.board.epoch = 2;
+  state.board.revision = 3;
+  session.receive({ type: 'snapshot', data: state });
+  session.receive({ type: 'ack', commandId: command.commandId, revision: 3 });
+  assert.equal(session.view().busy, false);
+  assert.equal(session.view().unsaved, false);
+  assert.equal(sent.length, 1);
 });

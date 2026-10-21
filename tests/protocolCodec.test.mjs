@@ -21,3 +21,12 @@ test('metadata events only accept a bounded canvas name', () => {
   assert.throws(() => parseServerEvent('{"type":"metadata","name":""}'));
   assert.throws(() => parseServerEvent(JSON.stringify({ type: 'metadata', name: 'x'.repeat(121) })));
 });
+
+import { protocolEvents, snapshot } from './fixtures.mjs';
+
+test('all shared protocol fixtures pass the production decoder', () => {
+  for (const event of protocolEvents) assert.deepEqual(parseServerEvent(JSON.stringify(event)), event);
+  for (const poker of [false, true]) {
+    assert.deepEqual(parseServerEvent(JSON.stringify({ type: 'snapshot', data: snapshot(poker) })).data, snapshot(poker));
+  }
+});

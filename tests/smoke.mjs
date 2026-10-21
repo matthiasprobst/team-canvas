@@ -45,7 +45,7 @@ class Client {
   }
   async send(packet) { await this.ready; await this.page.evaluate(({ key, packet }) => window.smokeSockets[key].send(JSON.stringify(packet)), { key: this.key, packet }); }
   command(type, fields = {}) {
-    const packet = { type, commandId: randomUUID(), epoch: this.state.board.epoch, roundId: this.state.board.roundId, ...fields };
+    const packet = { type, commandId: randomUUID(), epoch: this.state.board.epoch, roundId: this.state.board.roundId, pageId: this.state.board.pageId, ...fields };
     this.send(packet); return packet;
   }
   next(predicate, timeout = 7000) {
@@ -88,6 +88,15 @@ try {
   a.send(patch); await a.ack(patch);
   console.log('✓ Public patches echo to sender and retries are idempotent');
 
+  const noOp = a.command('select_page', { targetPageId: a.state.board.pageId });
+  await a.ack(noOp);
+  await a.next(packet => packet.type === 'round');
+  await a.send(noOp);
+  await a.ack(noOp);
+  const refreshed = await a.next(packet => packet.type === 'snapshot');
+  assert.equal(refreshed.data.board.pageId, noOp.targetPageId);
+  console.log('✓ Duplicate page commands complete with an authorized snapshot');
+
   const start = a.command('start_round'); await a.ack(start);
   await Promise.all([a.next(packet => packet.type === 'snapshot' && packet.data.board.epoch === 1),
     b.next(packet => packet.type === 'snapshot' && packet.data.board.epoch === 1)]);
@@ -119,6 +128,19 @@ try {
   // Check stale context with a correlated command instead of consuming an arbitrary snapshot.
   const stale = { ...privatePatch, commandId: randomUUID() }; b.send(stale); await b.error(stale, 'stale_round');
   console.log('✓ Automatic reveal requires all ready; stale round commands are rejected');
+
+  const originalPage = b.state.board.pageId;
+  const copy = b.command('create_page', { copyCurrent: true, includePoker: true });
+  await b.ack(copy);
+  const copiedPage = await b.next(packet => packet.type === 'snapshot' && packet.data.board.pageId !== originalPage);
+  assert.equal(copiedPage.data.pages.length, 2);
+  assert.equal(copiedPage.data.elements.length, 3);
+  assert.equal(copiedPage.data.pokerCreatedIds.length, 2);
+  assert.equal((await asset(board, copiedPage.data.fileIds[0], guest.token, bob)).status(), 200);
+  const select = b.command('select_page', { targetPageId: originalPage });
+  await b.ack(select);
+  await b.next(packet => packet.type === 'snapshot' && packet.data.board.pageId === originalPage);
+  console.log('✓ Pages copy images and poker provenance independently and select globally');
 
   // Reconnect can briefly overlap the old closing socket; wait for its close handshake above.
   for (let i = 0; i < 8; i++) {

@@ -1,3 +1,4 @@
+import { snapshot, canvas } from '../fixtures.mjs';
 import { test, expect } from '../../frontend/node_modules/playwright/test.mjs';
 
 // UI-only transport failure tests. Real Keycloak and authorization are covered by
@@ -11,7 +12,7 @@ async function fixture(page) {
   await page.route('**/api/**', async route => {
     const path = new URL(route.request().url()).pathname;
     const json = path === '/api/me' ? account : path.endsWith('/join') ? { id, participantId: 'member', role: 'host', token: 'test' } :
-      { items: [{ id, name: 'Navigation canvas', owner: account, relationship: 'owner', createdAt: new Date().toISOString(), lastOpenedAt: null }], nextCursor: null };
+      { items: [canvas()], nextCursor: null };
     await route.fulfill({ json });
   });
   await page.routeWebSocket('**/ws/boards/*', ws => {
@@ -19,10 +20,12 @@ async function fixture(page) {
     ws.onClose(() => { closed = true; });
     ws.onMessage(raw => {
       const packet = JSON.parse(String(raw));
-      if (packet.type === 'hello') ws.send(JSON.stringify({ type: 'snapshot', data: {
-        board: { id, name: 'Navigation canvas', mode: 'standard', roundId: null, epoch: 0, revision: 0 },
-        round: null, elements: [], publicIds: [], fileIds: [], participantId: 'member', role: 'host',
-      } }));
+      if (packet.type === 'hello') {
+        const state = snapshot();
+        state.board.name = 'Navigation canvas';
+        state.participantId = 'member';
+        ws.send(JSON.stringify({ type: 'snapshot', data: state }));
+      }
       else if (packet.type === 'patch') packets.push(packet);
       else if (packet.type === 'ping') ws.send('{"type":"pong"}');
     });
@@ -35,7 +38,7 @@ async function fixture(page) {
 test('navigation waits for an acknowledgement and closes the old socket', async ({ page }) => {
   const state = await fixture(page);
   await page.getByRole('button', { name: 'Sticky note' }).click();
-  await expect(page.getByText('● Saving…', { exact: true })).toBeVisible();
+  await expect(page.getByText('Saving', { exact: true })).toBeVisible();
   await expect.poll(() => state.packets.length).toBe(1);
   await page.getByRole('link', { name: 'Canvases', exact: false }).click();
   await expect(page.getByRole('dialog', { name: 'Leave this canvas?' })).toBeVisible();
@@ -49,10 +52,10 @@ test('navigation waits for an acknowledgement and closes the old socket', async 
 test('offline navigation requires keeping, exporting, or explicitly discarding a draft', async ({ page }) => {
   const state = await fixture(page);
   await page.getByRole('button', { name: 'Sticky note' }).click();
-  await expect(page.getByText('● Saving…', { exact: true })).toBeVisible();
+  await expect(page.getByText('Saving', { exact: true })).toBeVisible();
   await expect.poll(() => state.packets.length).toBe(1);
   state.socket.close({ code: 1008, reason: 'Test interruption' });
-  await expect(page.getByText('○ Offline', { exact: true })).toBeVisible();
+  await expect(page.getByText('Offline', { exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'Canvases', exact: false }).click();
   await page.getByRole('button', { name: 'Stay here' }).click();
   await expect(page).toHaveURL(new RegExp(`/b/${id}$`));

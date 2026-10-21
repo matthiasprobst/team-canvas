@@ -26,7 +26,7 @@ test('owner confirms deletion, members cannot delete, and open viewers are notif
     await observer.getByRole('button', { name: 'Start poker' }).click();
     await expect(b.getByText('Poker round', { exact: false }).first()).toBeVisible();
     await b.getByRole('button', { name: 'Sticky note' }).click();
-    await expect(b.getByText('● Saved', { exact: true })).toBeVisible();
+    await expect(b.getByText('Saved', { exact: true })).toBeVisible();
     await a.reload();
     const openDelete = async () => {
       await a.getByLabel(`Actions for ${title}`, { exact: true }).click();

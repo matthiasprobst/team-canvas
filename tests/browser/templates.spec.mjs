@@ -17,7 +17,7 @@ test('private templates stay owner-only and public templates start independent c
     await a.goto(`${base}/b/${source.id}`);
     await expect(a.getByRole('button', { name: 'Sticky note' })).toBeEnabled();
     await a.getByRole('button', { name: 'Sticky note' }).click();
-    await expect(a.getByText('● Saved', { exact: true })).toBeVisible();
+    await expect(a.getByText('Saved', { exact: true })).toBeVisible();
     await a.getByRole('link', { name: 'Canvases', exact: false }).click();
     await a.getByLabel(`Actions for ${title}`, { exact: true }).click();
     await a.getByRole('button', { name: 'Manage tags', exact: true }).click();
@@ -60,7 +60,7 @@ test('private templates stay owner-only and public templates start independent c
     await expect(b.getByRole('button', { name: 'Edit template', exact: true })).toHaveCount(0);
     await a.getByRole('link', { name: 'Templates', exact: true }).click();
     await a.getByRole('button', { name: 'Edit template', exact: true }).click();
-    await expect(a.locator('.topbar strong')).toHaveText(title);
+    await expect(a.locator('.canvas-heading strong')).toHaveText(title);
     expect(new URL(a.url()).pathname).toBe(`/b/${source.id}`);
     await a.getByRole('link', { name: 'Canvases', exact: false }).click();
     await a.getByRole('link', { name: 'Templates', exact: true }).click();
@@ -76,7 +76,7 @@ test('private templates stay owner-only and public templates start independent c
     await expect(nameDialog.getByLabel('Canvas name')).toHaveValue(`Untitled canvas (based on template ${title})`);
     await nameDialog.getByLabel('Canvas name').fill(copyName);
     await nameDialog.getByRole('button', { name: 'Start canvas', exact: true }).click();
-    await expect(b.locator('.topbar strong')).toHaveText(copyName);
+    await expect(b.locator('.canvas-heading strong')).toHaveText(copyName);
     const bobPath = new URL(b.url()).pathname;
     bobCopy = { id: bobPath.split('/').at(-1) };
     expect(bobCopy.id).not.toBe(source.id);

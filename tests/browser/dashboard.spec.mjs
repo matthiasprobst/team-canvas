@@ -32,7 +32,7 @@ test('two users create, share, rename, switch, complete poker and sign out', asy
     await a.getByRole('button', { name: 'Start poker' }).click();
     await expect(b.getByText('Poker round', { exact: false })).toBeVisible();
     await b.getByRole('button', { name: 'Sticky note' }).click();
-    await expect(b.getByText('● Saved', { exact: true })).toBeVisible();
+    await expect(b.getByText('Saved', { exact: true })).toBeVisible();
     await b.getByRole('link', { name: 'Canvases', exact: false }).click();
     await expect(b.getByRole('dialog', { name: 'Leave this canvas?' })).toBeVisible();
     await b.getByRole('button', { name: 'Leave canvas', exact: true }).click();
@@ -45,12 +45,12 @@ test('two users create, share, rename, switch, complete poker and sign out', asy
     await a.getByRole('button', { name: 'Ready', exact: false }).click();
     await expect(a.getByRole('button', { name: 'Start poker' })).toBeVisible();
     await a.getByRole('link', { name: 'Canvases', exact: false }).click();
-    await a.getByLabel('Search canvases', { exact: true }).fill(title);
+    await a.getByLabel('Search canvases or tags', { exact: true }).fill(title);
     await a.getByLabel(`Actions for ${title}`, { exact: true }).click();
     await a.getByRole('button', { name: 'Rename', exact: true }).click();
     await a.getByLabel('Canvas name', { exact: true }).fill(`${title} updated`);
     await a.getByRole('button', { name: 'Rename canvas', exact: true }).click();
-    await expect(b.locator('.topbar strong')).toHaveText(`${title} updated`);
+    await expect(b.locator('.canvas-heading strong')).toHaveText(`${title} updated`);
     await a.screenshot({ path: testInfo.outputPath('dashboard-desktop.png'), fullPage: true });
     await a.setViewportSize({ width: 390, height: 844 });
     await a.getByRole('button', { name: 'Toggle navigation' }).click();
@@ -62,7 +62,7 @@ test('two users create, share, rename, switch, complete poker and sign out', asy
     await b.getByRole('link', { name: 'Canvases', exact: false }).click();
     await a.goto(base + boardPath);
     await a.getByRole('button', { name: 'Switch canvas' }).click();
-    await a.getByLabel('Search canvases', { exact: true }).fill('Switch target');
+    await a.getByLabel('Search canvases or tags', { exact: true }).fill('Switch target');
     await a.getByRole('link', { name: 'Switch target', exact: false }).first().click();
     await expect(a).toHaveURL(base + `/b/${other.id}`);
     await a.getByRole('link', { name: 'Sign out', exact: true }).click();

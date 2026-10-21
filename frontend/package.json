@@ -6,12 +6,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc -b && vite build",
+    "build": "npm run typecheck && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "predev": "node scripts/copy-fonts.mjs",
     "prebuild": "node scripts/copy-fonts.mjs",
-    "test:sync": "tsc --ignoreConfig --target es2022 --module commonjs --moduleResolution bundler --skipLibCheck --outDir ../.test-build src/protocol.ts src/protocolCodec.ts src/syncCore.ts src/syncSession.ts && node --test ../tests/*.test.mjs",
-    "test:e2e": "playwright test --config ../tests/browser/playwright.config.mjs"
+    "test:sync": "tsc --ignoreConfig --target es2022 --module commonjs --moduleResolution bundler --strict --noUnusedLocals --noUnusedParameters --skipLibCheck --outDir ../.test-build src/protocol.ts src/protocolCodec.ts src/syncCore.ts src/syncSession.ts src/draftExport.ts && node --test ../tests/*.test.mjs",
+    "test:e2e": "playwright test --config ../tests/browser/playwright.config.mjs",
+    "typecheck": "tsc --noEmit --incremental false"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "0.18.1",
