@@ -1,14 +1,33 @@
 # Team Canvas
 
-A shared canvas for feature refinement, architecture discussions, and retrospectives. Draw together, collect ideas privately in poker rounds, and reveal contributions only when everyone is ready.
+A self-hosted collaborative canvas for small company teams running Scrum sessions, feature refinement, architecture discussions, and retrospectives. Draw across multiple pages, save and share canvases, reuse templates, and collect ideas privately in poker rounds before revealing them together.
 
-React, TypeScript, Tailwind, Excalidraw, Kotlin/Quarkus, PostgreSQL, and Keycloak. The application interface is English.
+See the [company-readiness implementation backlog](.features/company-readiness/README.md) for the agreed next release; its new poker/privacy/admin behavior is planned until the tickets are validated.
+
+## Scope and design principles
+
+The core product is deliberately small:
+
+- **Multi-page canvases:** organize a session across pages, starting blank or copying an existing page.
+- **Poker mode:** collect private drawings and ideas, then publish together when all participants are ready. This is a contribution-and-reveal workflow, not a numeric estimation system.
+- **Saved and shared work:** persist acknowledged changes automatically and reopen canvases through an account dashboard; invite colleagues through authenticated sharing links.
+- **Reusable templates:** prepare layouts for Scrum sessions, retrospectives, or architecture discussions and start independent canvases from them.
+- **Required company SSO and privacy:** authenticate every participant and enforce ownership, membership, and private-round visibility on the server.
+
+Easy company rollout and maintenance are design goals. Prefer a small number of services, established dependencies, explicit permissions, and changes that are easy to review. A new dependency must justify its maintenance cost; fewer dependencies must not mean reimplementing authentication or a drawing editor. Security fixes, reliable saving, safe upgrades, backup/restore, and clear operating instructions are part of the core scope.
+
+Keep additions tied to those workflows. Chat, video calls, AI assistants, task/project management, plugin marketplaces, complex approval workflows, and a general integration platform are outside the intended scope. Existing search, tags, and presence support finding and using canvases; they should stay lightweight.
+
+React/TypeScript and Excalidraw provide the browser UI; Kotlin/Quarkus provides one backend; PostgreSQL stores accounts, drawings, and uploaded images. Caddy serves the UI and proxies requests. Company deployments use an existing Keycloak identity provider. No Redis, message broker, separate image store, or application SaaS account is required. Tailwind and Vite are build tooling, and the UI is English.
+
+The current implementation has rollout gaps; see the [simplicity and company-readiness review](docs/simplicity-review.md) for evidence and proposed priorities. In particular, template copies currently include only the selected page, and the bundled Compose setup is for disposable development data.
 
 ## Features
 
+- Multiple persistent pages per canvas. Any member can create or select a page, and everyone follows the same selected page. New pages can copy shared content, optionally including revealed poker contributions. Page changes are blocked during a poker round; page renaming, reordering, and deletion are not implemented.
 - A personal dashboard with **All canvases**, **My canvases**, and **Shared with me**, plus search by canvas name or tags and sorting. Owners can add up to 20 tags per canvas; suggestions come from tags on their own canvases, and template copies keep their source tags.
 - Create canvases, rename those you own, and share invitation links. Recipients sign in and explicitly accept invitations.
-- Mark canvases you own as private templates, or make them public for all signed-in users. Owners can edit templates from the Templates page; starting a template opens an independent canvas copied from its shared drawings and images, so changes affect future copies only.
+- Mark canvases you own as private templates, or make them public for all signed-in users of this deployment. Owners can edit templates from the Templates page; starting a template opens an independent canvas copied from the **currently selected page's** shared drawings and images. Other pages, private poker drafts, memberships, and invitations are not copied. Changes affect future copies only. Ready-made Scrum/architecture templates are not bundled; create your own layouts.
 - Delete canvases you own from the dashboard’s actions menu. Confirmation permanently removes all contents and invitations for everyone, including active poker rounds; connected viewers are notified.
 - Persistent account membership across browsers/devices; independent sessions in multiple tabs.
 - Collaborative shapes, text, sticky notes, images, presence, and shared cursors.
@@ -19,7 +38,7 @@ The backend supports **one active instance per database** and **ten simultaneous
 
 ## Quick start
 
-Install Docker with the Compose plugin. From the repository root:
+Install Docker with the Compose plugin. **Use disposable development data:** the current Compose file enables Flyway schema cleanup if migration validation fails. Persistent volumes do not protect against that reset. Use the [company deployment guide](deploy/kubernetes/README.md) for retained company data. From the repository root:
 
 ```sh
 test -f .env || cp .env.example .env
@@ -114,6 +133,12 @@ CI runs frontend checks, backend tests with PostgreSQL, container builds, authen
 ## Company deployment
 
 Use company-managed Keycloak and the [Kubernetes deployment guide](deploy/kubernetes/README.md). All data APIs, assets, and WebSocket upgrades require sign-in. There is no supported guest-mode bypass. OIDC tokens remain in server-managed HttpOnly cookies; app accounts use verified issuer/subject identity and board sessions are also bound to the Keycloak login session.
+
+Keycloak is the documented SSO target and the provider used by the automated test suite; direct compatibility with other OIDC providers is not established. Kubernetes is the supplied company deployment template, not an application requirement. A production Compose configuration is not supplied.
+
+Private poker content is hidden from other participants, including the canvas owner, until publication. The application server and database administrators can access stored content: this is server-enforced privacy, not end-to-end encryption. Fonts are served locally and the supplied browser content policy restricts connections to the application origin. Operators manage HTTPS, database/backup encryption, access to infrastructure, and retention.
+
+An invitation grants editing membership. A public template can be copied by every user admitted to this deployment; making it private or deleting it later does not remove existing copies. There is no read-only sharing role, automatic retention, account-erasure workflow, or ownership-transfer workflow. Deleting a canvas removes its live contents and invitations; database backups follow the operator's retention policy. Draft export is a recovery aid for the current page/draft, not a complete multi-page canvas backup.
 
 The application does not seed sample canvases. Published application images contain no canvas data or demo accounts; Alice and Bob belong to the development Keycloak realm only. Use a separate production database and company identity provider, without copying development/test volumes or importing the development realm.
 
