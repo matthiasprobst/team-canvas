@@ -26,12 +26,11 @@ class CanvasPageService @Inject constructor(
         val position = repository.pages(connection, who.boardId).size
         repository.limits.requirePageSlot(position)
         connection.prepareStatement(
-            "INSERT INTO canvas_pages(id,board_id,position,created_by) VALUES(?,?,?,?)",
+            "INSERT INTO canvas_pages(id,board_id,position) VALUES(?,?,?)",
         ).use {
             it.setObject(1, pageId)
             it.setObject(2, who.boardId)
             it.setInt(3, position)
-            it.setObject(4, who.id)
             it.executeUpdate()
         }
         if (copyCurrent) copyPage(connection, who, state, pageId, includePoker)
@@ -75,7 +74,7 @@ class CanvasPageService @Inject constructor(
 
     private fun requirePagesOpen(state: BoardState) {
         if (state.mode == "poker")
-            throw ClientException("poker_active", "Finish or cancel the poker round before changing pages.")
+            throw ClientException("poker_active", "Stop the poker round before changing pages.")
     }
 
     private fun copyPage(

@@ -1,3 +1,4 @@
+import { draftCapability } from "./draftCapability";
 import type { BinaryFile } from "./protocol";
 export interface Identity {
   id: string;
@@ -90,10 +91,11 @@ export async function fetchAsset(
   boardId: string,
   assetId: string,
   token: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  roundId?: string | null
 ): Promise<BinaryFile> {
   const response = await fetch(`/api/boards/${boardId}/assets/${encodeURIComponent(assetId)}`, {
-    headers: { "X-Board-Token": token, "X-Requested-With": "JavaScript" },
+    headers: { "X-Board-Token": token, "X-Requested-With": "JavaScript", ...(roundId ? { "X-Draft-Capability": draftCapability(boardId, roundId) } : {}) },
     signal,
   });
   if (!response.ok)

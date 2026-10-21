@@ -4,7 +4,7 @@ import type { ElementData } from "./protocol";
 const drawingFields = new Set(
   (
     "id type x y width height angle strokeColor backgroundColor fillStyle strokeWidth strokeStyle roughness opacity " +
-    "groupIds frameId index roundness seed version versionNonce isDeleted boundElements updated locked text originalText fontSize fontFamily " +
+    "groupIds frameId index roundness seed version versionNonce isDeleted boundElements locked text originalText fontSize fontFamily " +
     "textAlign verticalAlign containerId autoResize lineHeight points lastCommittedPoint startBinding endBinding startArrowhead endArrowhead " +
     "elbowed fixedSegments startIsSpecial endIsSpecial pressures simulatePressure fileId status scale crop"
   ).split(" ")
@@ -56,7 +56,7 @@ export function mergeById(current: readonly ElementData[], incoming: readonly El
   });
 }
 
-/** Public objects are locked during poker; private objects can be changed until done. */
+/** Public objects are locked during poker; private objects can be changed until reveal. */
 export function restoreLockedPublic(
   actual: readonly ElementData[],
   published: ReadonlyMap<string, ElementData>

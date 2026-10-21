@@ -108,8 +108,8 @@ class BoardStoreIntegrationTest {
         val guest = access.join(board.id, JoinRequest(key), visitor)
         return Room(
             board,
-            access.authenticate(board.id, host.token, owner),
-            access.authenticate(board.id, guest.token, visitor),
+            access.authenticate(board.id, host.token, owner).copy(draftKey = Security.token()),
+            access.authenticate(board.id, guest.token, visitor).copy(draftKey = Security.token()),
             guest.token,
             owner,
             visitor,
@@ -173,12 +173,11 @@ class BoardStoreIntegrationTest {
         val room = room()
         store.patch(room.host, context(room.host), listOf(shape("public")), emptyMap())
         val first = store.snapshot(room.host).board.pageId
-        rounds.start(room.host, context(room.host), setOf(room.host.id, room.guest.id))
+        rounds.start(room.host, context(room.host))
         error("poker_active") { pages.create(room.host, context(room.host), false, false) }
         error("poker_active") { pages.select(room.guest, context(room.guest), first) }
         val patch = store.patch(room.guest, context(room.guest), listOf(shape("poker")), emptyMap())
-        rounds.ready(room.guest, context(room.guest), patch.result.ack.revision)
-        rounds.ready(room.host, context(room.host), 0)
+        rounds.stop(room.guest, context(room.guest))
         assertEquals(listOf("poker"), store.snapshot(room.host).pokerCreatedIds)
         pages.create(room.host, context(room.host), true, false)
         assertEquals(1, store.snapshot(room.host).elements.size)
@@ -197,7 +196,7 @@ class BoardStoreIntegrationTest {
         val other = access.create("Keep this canvas", room.owner)
         error("not_found") { catalog.delete(room.board.id, room.visitor) }
         error("not_found") { catalog.delete(room.board.id, user("Outsider")) }
-        rounds.start(room.host, context(room.host), setOf(room.host.id, room.guest.id))
+        rounds.start(room.host, context(room.host))
         val image = json.readTree(
             """{"id":"file","mimeType":"image/png","created":1,"dataURL":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4//8/AwAI/AL+Skg5VwAAAABJRU5ErkJggg=="}"""
         )
@@ -213,10 +212,7 @@ class BoardStoreIntegrationTest {
                     it.next(); it.getLong(1)
                 }, table)
             }
-            assertEquals(0L, c.query("SELECT count(*) FROM round_participants WHERE round_id=?", roundId) {
-                it.next(); it.getLong(1)
-            })
-            for (table in listOf("board_sessions", "command_receipts")) {
+            for (table in listOf("board_sessions")) {
                 assertEquals(0L, c.query("SELECT count(*) FROM $table WHERE participant_id IN (?,?)", room.host.id, room.guest.id) {
                     it.next(); it.getLong(1)
                 }, table)
@@ -243,7 +239,7 @@ class BoardStoreIntegrationTest {
             .put("type", "image").put("fileId", "public-file")
         store.patch(room.host, context(room.host), listOf(shape("shared-shape"), publicImageElement), mapOf("public-file" to publicImage))
 
-        rounds.start(room.host, context(room.host), setOf(room.host.id, room.guest.id))
+        rounds.start(room.host, context(room.host))
         val privateImage = publicImage.deepCopy<com.fasterxml.jackson.databind.node.ObjectNode>()
             .put("id", "private-file")
         val privateImageElement = (shape("private-image") as com.fasterxml.jackson.databind.node.ObjectNode)
@@ -316,96 +312,72 @@ class BoardStoreIntegrationTest {
     }
 
     @Test
-    fun `private elements and images reveal only when every roster member is ready`() {
+    fun `private drafts require a capability and any member can reveal saved offline work`() {
         val room = room()
-        rounds.start(room.host, context(room.host), setOf(room.host.id, room.guest.id))
-        val guestContext = context(room.guest)
-        val image =
-            json.readTree(
-                """{"id":"file","mimeType":"image/png","created":1,"dataURL":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4//8/AwAI/AL+Skg5VwAAAABJRU5ErkJggg=="}"""
-            )
-        val imageElement =
-            (shape("image") as com.fasterxml.jackson.databind.node.ObjectNode)
-                .put("type", "image")
-                .put("fileId", "file")
-        val saved =
-            store.patch(
-                room.guest,
-                guestContext,
-                listOf(shape("private"), imageElement),
-                mapOf("file" to image),
-            )
-        assertTrue(store.snapshot(room.host).elements.isEmpty())
-        error("not_found") { store.asset(room.host, "file") }
-        assertNotNull(store.asset(room.guest, "file"))
-        error("unsaved_draft") { rounds.ready(room.guest, context(room.guest), 0) }
-        rounds.ready(room.guest, context(room.guest), saved.result.ack.revision)
-        assertEquals("poker", store.snapshot(room.host).board.mode)
-        error("locked") {
-            store.patch(room.guest, context(room.guest), listOf(shape("late")), emptyMap())
-        }
-        val last = rounds.ready(room.host, context(room.host), 0)
-        assertTrue(last.transitioned)
-        assertEquals("standard", store.snapshot(room.guest).board.mode)
+        store.patch(room.host, context(room.host), listOf(shape("base")), emptyMap())
+        rounds.start(room.guest, context(room.guest))
+        val old = context(room.guest)
+        store.patch(room.guest, old, listOf(shape("private")), emptyMap())
+        assertEquals(listOf("base"), store.snapshot(room.host).elements.map { it.path("id").asText() })
+        assertEquals(2, store.snapshot(room.guest).elements.size)
+        val missing = room.guest.copy(draftKey = null)
+        val wrong = room.guest.copy(draftKey = Security.token())
+        assertEquals(1, store.snapshot(missing).elements.size)
+        assertEquals(1, store.snapshot(wrong).elements.size)
+        error("locked") { store.patch(missing, context(missing), listOf(shape("attack")), emptyMap()) }
+        error("forbidden") { store.patch(wrong, context(wrong), listOf(shape("private", 99)), emptyMap()) }
+        error("forbidden") { store.patch(room.guest, context(room.guest), listOf(shape("base", 99)), emptyMap()) }
+        assertTrue(rounds.stop(room.host, context(room.host)).transitioned)
         assertEquals(2, store.snapshot(room.host).elements.size)
-        assertNotNull(store.asset(room.host, "file"))
-        error("stale_round") {
-            store.patch(
-                room.guest,
-                guestContext.copy(commandId = UUID.randomUUID()),
-                listOf(shape("stale")),
-                emptyMap(),
-            )
+        error("stale_round") { store.patch(room.guest, old.copy(commandId=UUID.randomUUID()), listOf(shape("late")), emptyMap()) }
+        dataSource.connection.use { c ->
+            assertEquals(0L, c.query("SELECT count(*) FROM private_drafts WHERE board_id=?", room.board.id) { it.next(); it.getLong(1) })
+            assertEquals(0L, c.query("SELECT count(*) FROM elements WHERE board_id=? AND draft_hash IS NOT NULL", room.board.id) { it.next(); it.getLong(1) })
+            assertEquals(0L, c.query("SELECT count(*) FROM information_schema.columns WHERE table_schema=? AND table_name IN ('elements','assets','command_receipts','canvas_pages') AND column_name IN ('author_id','participant_id','created_by')", schema) { it.next(); it.getLong(1) })
         }
     }
 
     @Test
-    fun `retries do not apply a command twice and unauthorized users cannot control rounds`() {
+    fun `drawing receipts have no account mapping and commands apply once`() {
         val room = room()
-        error("forbidden") { rounds.start(room.guest, context(room.guest), setOf(room.guest.id)) }
         val command = context(room.host)
         val first = store.patch(room.host, command, listOf(shape("public")), emptyMap())
         val retry = store.patch(room.host, command, listOf(shape("public", 99)), emptyMap())
         assertTrue(retry.result.duplicate)
         assertEquals(first.result.ack, retry.result.ack)
         assertEquals(0, store.snapshot(room.host).elements.single().path("x").asInt())
+        rounds.start(room.guest, context(room.guest))
+        access.revoke(room.board.id, room.owner, true)
+        error("unauthorized") { rounds.stop(room.guest, context(room.host)) }
     }
 
     @Test
-    fun `late arrivals are excluded and cancelling never publishes private content`() {
+    fun `late arrivals can contribute and reveal without owner participation`() {
         val room = room()
-        rounds.start(room.host, context(room.host), setOf(room.host.id, room.guest.id))
+        rounds.start(room.guest, context(room.guest))
         val identity = user("Late")
-        val late = access.join(room.board.id, JoinRequest(room.inviteKey), identity)
-        val lateWho = access.authenticate(room.board.id, late.token, identity)
-        assertFalse(store.snapshot(lateWho).round!!.included)
-        error("locked") {
-            store.patch(lateWho, context(lateWho), listOf(shape("late")), emptyMap())
-        }
-        store.patch(room.guest, context(room.guest), listOf(shape("secret")), emptyMap())
-        error("forbidden") { rounds.cancel(room.guest, context(room.guest)) }
-        rounds.cancel(room.host, context(room.host))
+        val joined = access.join(room.board.id, JoinRequest(room.inviteKey), identity)
+        val late = access.authenticate(room.board.id, joined.token, identity).copy(draftKey = Security.token())
+        store.patch(late, context(late), listOf(shape("late")), emptyMap())
         assertTrue(store.snapshot(room.guest).elements.isEmpty())
-        assertTrue(store.snapshot(room.host).elements.isEmpty())
+        rounds.stop(late, context(late))
+        assertEquals(1, store.snapshot(room.guest).elements.size)
     }
 
     @Test
-    fun `simultaneous final ready commands reveal exactly once`() {
+    fun `simultaneous stop commands reveal exactly once`() {
         val room = room()
-        rounds.start(room.host, context(room.host), setOf(room.host.id, room.guest.id))
+        rounds.start(room.guest, context(room.guest))
         val host = context(room.host)
         val guest = context(room.guest)
         val executor = Executors.newFixedThreadPool(2)
         try {
-            val a = executor.submit<CommandResult> { rounds.ready(room.host, host, 0) }
-            val b = executor.submit<CommandResult> { rounds.ready(room.guest, guest, 0) }
-            val results = listOf(a.get(), b.get())
-            assertEquals(1, results.count { it.transitioned })
+            val a = executor.submit<CommandResult> { rounds.stop(room.host, host) }
+            val b = executor.submit<CommandResult> { rounds.stop(room.guest, guest) }
+            assertEquals(1, listOf(a.get(), b.get()).count { it.transitioned })
             assertEquals("standard", store.snapshot(room.host).board.mode)
-            assertTrue(rounds.ready(room.host, host, 0).duplicate)
-        } finally {
-            executor.shutdownNow()
-        }
+            assertTrue(rounds.stop(room.host, host).duplicate)
+        } finally { executor.shutdownNow() }
     }
 
     @Test
@@ -480,7 +452,7 @@ class BoardStoreIntegrationTest {
         val anotherKey = access.invite(room.board.id, room.owner).getValue("inviteKey")
         assertNotNull(access.preview(room.board.id, room.inviteKey, room.visitor))
         assertNotNull(access.preview(room.board.id, anotherKey, room.visitor))
-        rounds.start(room.host, context(room.host), setOf(room.host.id, room.guest.id))
+        rounds.start(room.host, context(room.host))
         store.patch(room.guest, context(room.guest), listOf(shape("private")), emptyMap())
         val tab = access.join(room.board.id, JoinRequest(), room.visitor)
         assertEquals(room.guest.id, tab.participantId)
@@ -488,11 +460,11 @@ class BoardStoreIntegrationTest {
         assertEquals(
             1,
             store
-                .snapshot(access.authenticate(room.board.id, tab.token, room.visitor))
+                .snapshot(access.authenticate(room.board.id, tab.token, room.visitor).copy(draftKey = room.guest.draftKey))
                 .elements
                 .size,
         )
-        assertEquals(2, store.snapshot(room.host).round!!.members.size)
+        assertTrue(store.snapshot(access.authenticate(room.board.id, tab.token, room.visitor)).elements.isEmpty())
         assertTrue(store.snapshot(room.host).elements.isEmpty())
         access.revoke(room.board.id, room.owner, false)
         assertNotNull(access.authenticate(room.board.id, tab.token, room.visitor))
@@ -527,12 +499,6 @@ class BoardStoreIntegrationTest {
             c.update(
                 "UPDATE board_sessions SET expires_at=now()-interval '1 second' WHERE token_hash=?",
                 Security.hash(room.guestToken),
-            )
-            c.update(
-                "INSERT INTO boards(id,name,host_key_hash) VALUES(?,?,?)",
-                UUID.randomUUID(),
-                "Legacy",
-                Security.hash("old-key"),
             )
         }
         error("unauthorized") { access.authenticate(room.board.id, room.guestToken, room.visitor) }
@@ -588,7 +554,7 @@ class BoardStoreIntegrationTest {
     @Test
     fun `deleted private text and unused images are never published`() {
         val room = room()
-        rounds.start(room.host, context(room.host), setOf(room.host.id, room.guest.id))
+        rounds.start(room.host, context(room.host))
         val image =
             json.readTree(
                 """{"id":"discarded-file","mimeType":"image/png","created":1,"dataURL":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4//8/AwAI/AL+Skg5VwAAAABJRU5ErkJggg=="}"""
@@ -611,9 +577,7 @@ class BoardStoreIntegrationTest {
                 .put("text", "Do not reveal")
                 .put("isDeleted", true)
         store.patch(room.guest, context(room.guest), listOf(deletedImage, text), emptyMap())
-        val revision = store.snapshot(room.guest).round!!.draftRevision
-        rounds.ready(room.guest, context(room.guest), revision)
-        rounds.ready(room.host, context(room.host), 0)
+        rounds.stop(room.guest, context(room.guest))
         assertTrue(store.snapshot(room.host).elements.isEmpty())
         error("not_found") { store.asset(room.host, "discarded-file") }
     }

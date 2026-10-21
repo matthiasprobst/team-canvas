@@ -31,7 +31,7 @@ constructor(
                     .distinct()
             SceneSnapshot(
                 state,
-                repository.round(connection, state, who),
+                repository.round(state),
                 elements,
                 rows.filter { it.scope == "public" }.map { it.id },
                 fileIds,
@@ -44,7 +44,7 @@ constructor(
 
     fun roundState(who: Participant): Pair<BoardState, RoundState?> =
         repository.command(who) { connection, state ->
-            state to repository.round(connection, state, who)
+            state to repository.round(state)
         }
 
     /** Files are read individually with the same visibility policy as elements. */
@@ -64,16 +64,12 @@ constructor(
         files: Map<String, JsonNode>,
     ): PatchResult =
         repository.command(who) command@{ connection, state ->
-            repository.receipt(connection, who, context.commandId)?.let {
+            repository.receipt(connection, who, context.commandId, context.roundId)?.let {
                 return@command PatchResult(CommandResult(it, duplicate = true), "private")
             }
             RoundRules.requireContext(state, context)
             val scope = if (state.mode == "standard") "public" else "private"
-            if (scope == "private") {
-                val round = repository.round(connection, state, who)
-                if (round == null || !round.included || round.done)
-                    throw ClientException("locked", "Your contribution is locked.")
-            }
+            if (scope == "private") DraftCapabilities.register(connection, who, state.roundId!!)
             val previousUsage = repository.limits.usage(connection, who.boardId)
             val existingElements = scenes.sizes(connection, SceneTable.ELEMENTS, who.boardId, state.pageId)
             val existingAssets = scenes.sizes(connection, SceneTable.ASSETS, who.boardId, state.pageId)
@@ -99,7 +95,7 @@ constructor(
                 existingAssets
                     .toMutableMap()
                     .apply {
-                        files.forEach { (id, file) -> put(id, file.toString().length.toLong()) }
+                        files.forEach { (id, file) -> put(id, file.toString().toByteArray(Charsets.UTF_8).size.toLong()) }
                     }
                     .values
                     .sum()
@@ -154,8 +150,7 @@ constructor(
                 state.pageId,
             )
             repository.limits.requireStorage(connection, who.boardId, previousUsage)
-            val ack = repository.commitCommand(connection, who, context.commandId)
-            if (scope == "private") scenes.updateDraftRevision(connection, who, state.roundId, ack.revision)
+            val ack = repository.commitCommand(connection, who, context.commandId, context.roundId)
             PatchResult(CommandResult(ack), scope)
         }
 
@@ -164,7 +159,7 @@ constructor(
     ) {
         val existing = scenes.ownership(connection, who.boardId, id) ?: return
         if (existing.pageId != pageId || existing.scope != scope ||
-            (scope == "private" && (existing.authorId != who.id || existing.roundId != roundId)))
+            (scope == "private" && (existing.draftHash != DraftCapabilities.hash(who, roundId) || existing.roundId != roundId)))
             throw ClientException("forbidden", "You cannot change this object.")
     }
 

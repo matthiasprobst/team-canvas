@@ -72,44 +72,7 @@ class BoardRepository @Inject constructor(private val dataSource: DataSource, va
         if (!active) throw ClientException("unauthorized", "Access expired or was revoked.")
     }
 
-    fun round(connection: Connection, state: BoardState, who: Participant): RoundState? {
-        val id = state.roundId ?: return null
-        val members =
-            connection
-                .prepareStatement(
-                    """
-                    SELECT p.id,p.name,rp.done FROM round_participants rp
-                    JOIN participants p ON p.id=rp.participant_id WHERE rp.round_id=? ORDER BY p.id
-                    """
-                        .trimIndent()
-                )
-                .use { statement ->
-                    statement.setObject(1, id)
-                    statement.executeQuery().use { rows ->
-                        buildList {
-                            while (rows.next()) add(
-                                RoundMember(
-                                    rows.getObject(1, UUID::class.java),
-                                    rows.getString(2),
-                                    rows.getBoolean(3),
-                                )
-                            )
-                        }
-                    }
-                }
-        val revision =
-            connection
-                .prepareStatement(
-                    "SELECT draft_revision FROM round_participants WHERE round_id=? AND participant_id=?"
-                )
-                .use { statement ->
-                    statement.setObject(1, id)
-                    statement.setObject(2, who.id)
-                    statement.executeQuery().use { if (it.next()) it.getLong(1) else 0L }
-                }
-        val member = members.find { it.id == who.id }
-        return RoundState(id, member?.done ?: false, member != null, revision, members)
-    }
+    fun round(state: BoardState): RoundState? = state.roundId?.let { RoundState(it) }
 
     fun pages(connection: Connection, boardId: UUID): List<CanvasSheet> =
         connection.prepareStatement("SELECT id,position FROM canvas_pages WHERE board_id=? ORDER BY position").use {
@@ -119,63 +82,23 @@ class BoardRepository @Inject constructor(private val dataSource: DataSource, va
             } }
         }
 
-    fun receipt(connection: Connection, who: Participant, id: UUID): CommandAck? =
-        connection
-            .prepareStatement(
-                "SELECT revision FROM command_receipts WHERE participant_id=? AND command_id=?"
-            )
-            .use { statement ->
-                statement.setObject(1, who.id)
-                statement.setObject(2, id)
-                statement.executeQuery().use {
-                    if (it.next()) CommandAck(commandId = id, revision = it.getLong(1)) else null
-                }
-            }
+    private fun receiptScope(who: Participant, roundId: UUID?): String =
+        if (roundId == null) "public" else DraftCapabilities.hash(who, roundId)
+            ?: throw ClientException("locked", "Private draft capability is missing.")
 
-    fun commitCommand(connection: Connection, who: Participant, id: UUID): CommandAck {
-        connection
-            .prepareStatement(
-                "DELETE FROM command_receipts WHERE participant_id=? AND created_at<now()-interval '2 days'"
-            )
-            .use {
-                it.setObject(1, who.id)
-                it.executeUpdate()
-            }
-        val count =
-            connection
-                .prepareStatement(
-                    "SELECT count(*) FROM command_receipts WHERE participant_id=? AND created_at>now()-interval '1 day'"
-                )
-                .use {
-                    it.setObject(1, who.id)
-                    it.executeQuery().use { rows ->
-                        rows.next()
-                        rows.getLong(1)
-                    }
-                }
-        if (count >= BoardLimits.COMMANDS_PER_DAY) throw ClientException("daily_limit", "Daily change limit reached.")
-        val revision =
-            connection
-                .prepareStatement(
-                    "UPDATE boards SET revision=revision+1 WHERE id=? RETURNING revision"
-                )
-                .use {
-                    it.setObject(1, who.boardId)
-                    it.executeQuery().use { rows ->
-                        rows.next()
-                        rows.getLong(1)
-                    }
-                }
-        connection
-            .prepareStatement(
-                "INSERT INTO command_receipts(participant_id,command_id,revision) VALUES(?,?,?)"
-            )
-            .use {
-                it.setObject(1, who.id)
-                it.setObject(2, id)
-                it.setLong(3, revision)
-                it.executeUpdate()
-            }
+    fun receipt(c: Connection, who: Participant, id: UUID, roundId: UUID? = null): CommandAck? =
+        c.query("SELECT revision FROM command_receipts WHERE board_id=? AND receipt_scope=? AND command_id=?",
+            who.boardId, receiptScope(who, roundId), id) {
+            if (it.next()) CommandAck(commandId = id, revision = it.getLong(1)) else null
+        }
+
+    fun commitCommand(c: Connection, who: Participant, id: UUID, roundId: UUID? = null): CommandAck {
+        c.update("DELETE FROM command_receipts WHERE board_id=? AND created_at<now()-interval '2 days'", who.boardId)
+        val count = c.query("SELECT count(*) FROM command_receipts WHERE board_id=? AND created_at>now()-interval '1 day'", who.boardId) { it.next(); it.getLong(1) }
+        if (count >= BoardLimits.COMMANDS_PER_DAY) throw ClientException("daily_limit", "Daily canvas change limit reached.")
+        val revision = c.query("UPDATE boards SET revision=revision+1 WHERE id=? RETURNING revision", who.boardId) { it.next(); it.getLong(1) }
+        c.update("INSERT INTO command_receipts(board_id,receipt_scope,command_id,revision) VALUES(?,?,?,?)",
+            who.boardId, receiptScope(who, roundId), id, revision)
         return CommandAck(commandId = id, revision = revision)
     }
 

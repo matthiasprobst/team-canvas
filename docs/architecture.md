@@ -26,7 +26,7 @@ Changes use object-level last-writer-wins reconciliation. Accepted changes are e
 
 Every scene mutation carries its round context. The backend rejects stale commands instead of interpreting a private contribution as a public edit. Command receipts let clients retry a command without applying it twice. Readiness updates do not replace the scene; this preserves edits still waiting for acknowledgement.
 
-A round stores its participant roster and readiness in PostgreSQL. The server publishes contributions in one transaction only after every roster member is ready. Private elements and image downloads are authorized on the server. Cancelling a round deletes its private data. Deleted private elements and unused private images are removed before publication.
+Poker has no participant roster or readiness. Any active member starts or stops it. Private rows refer to round-scoped capability hashes, never participant identities. Clients authorize a capability after the initial snapshot; each image request requires both membership and that capability. Reveal is a single transaction that publishes saved live content and removes private associations. Late private writes fail stale context and remain recoverable locally.
 
 The backend assumes a single active instance. PostgreSQL row locks serialize board commands, and a dedicated PostgreSQL session holds an advisory lock to reject a second backend. Direct connections or session pooling are required; transaction-mode PgBouncer is unsupported. Restart the backend after losing the ownership connection.
 
@@ -53,9 +53,9 @@ Mutating commands contain a UUID `commandId`, the board `epoch`, and a UUID `rou
 | Command | Behavior |
 | --- | --- |
 | `patch` with `elements` and `files` | Up to 100 elements and one new image; the server decides ownership and visibility |
-| `start_round` | Host only; stores the roster and increments the epoch |
-| `done` with `draftRevision` | Locks the acknowledged draft and publishes if all members are ready |
-| `cancel_round` | Host only; deletes private contributions and ends the round |
+| `start_round` | Any member starts private contributions and increments the epoch |
+| `stop_round` | Any member publishes all saved private contributions |
+| `draft` with round ID and capability | Authorizes this tab to recover its private draft |
 | `resync` | Sends an authorized snapshot, limited to once every two seconds |
 | `cursor` / `ping` | Sends transient position in standard mode or checks the connection |
 

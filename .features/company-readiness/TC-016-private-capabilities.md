@@ -1,6 +1,6 @@
 # TC-016: Introduce unlinked private-draft persistence
 
-Status: Todo
+Status: In review
 Priority: P0
 Dependencies: TC-013, TC-015
 
@@ -35,4 +35,4 @@ Commit coherent passing behavior with its tests and docs. Split storage foundati
 
 ## Completion evidence
 
-Pending implementation and validation.
+Implemented the coordinated initial-schema, capability persistence and member-operated poker cutover. `mvn -o test` with PostgreSQL: 55 passed, no skips. Frontend sync tests and production build passed. Real browser qualification remains pending.

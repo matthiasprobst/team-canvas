@@ -7,8 +7,7 @@ import java.util.UUID
 internal sealed interface MutationCommand { val context: CommandContext }
 internal data class PatchCommand(override val context: CommandContext, val elements: List<JsonNode>, val files: Map<String, JsonNode>) : MutationCommand
 internal data class StartRoundCommand(override val context: CommandContext) : MutationCommand
-internal data class ReadyCommand(override val context: CommandContext, val draftRevision: Long) : MutationCommand
-internal data class CancelRoundCommand(override val context: CommandContext) : MutationCommand
+internal data class StopRoundCommand(override val context: CommandContext) : MutationCommand
 internal data class CreatePageCommand(override val context: CommandContext, val copyCurrent: Boolean, val includePoker: Boolean) : MutationCommand
 internal data class SelectPageCommand(override val context: CommandContext, val targetPageId: UUID) : MutationCommand
 
@@ -29,13 +28,7 @@ internal object SocketCommandCodec {
         return when (packet.path("type").asText()) {
             "patch" -> PatchCommand(context, ElementValidation.validateElements(packet.path("elements")), ElementValidation.validateFiles(packet.get("files")))
             "start_round" -> StartRoundCommand(context)
-            "done" -> {
-                val revision = packet.path("draftRevision")
-                if (!revision.isIntegralNumber || !revision.canConvertToLong())
-                    throw ClientException("bad_request", "Draft revision is missing.")
-                ReadyCommand(context, revision.asLong())
-            }
-            "cancel_round" -> CancelRoundCommand(context)
+            "stop_round" -> StopRoundCommand(context)
             "create_page" -> CreatePageCommand(context, packet.path("copyCurrent").asBoolean(false), packet.path("includePoker").asBoolean(false))
             "select_page" -> SelectPageCommand(context, UUID.fromString(packet.path("targetPageId").asText()))
             else -> throw ClientException("invalid_message", "Unknown message type.")

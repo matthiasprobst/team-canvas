@@ -128,6 +128,8 @@ constructor(
             limits.require("bytes:global", 64_000_000, 10_000, bytes)
             synchronized(lock(boardId)) {
                 if (type == "hello") {
+                    if (packet.path("protocolVersion").asInt() != 2)
+                        throw ClientException("protocol_version", "Reload this page to update the collaboration client.")
                     if (peer.participant != null)
                         throw ClientException("invalid_state", "Already signed in.")
                     val token = packet.path("token").asText("")
@@ -158,6 +160,18 @@ constructor(
                 }
                 access.authenticate(boardId, peer.token, peer.identity)
                 peer.lastAuthAt = System.currentTimeMillis()
+                if (type == "draft") {
+                    limits.require("draft:${session.id}", 5)
+                    val key = packet.path("capability").asText()
+                    val current = store.snapshot(who).board
+                    if (current.mode != "poker" || packet.path("roundId").asText() != current.roundId.toString())
+                        throw ClientException("stale_round", "Poker changed. Reconnect to recover your draft.")
+                    val authorized = who.copy(draftKey = key)
+                    DraftCapabilities.hash(authorized, current.roundId)
+                    peer.participant = authorized
+                    snapshot(peer)
+                    return@synchronized
+                }
                 if (type == "resync") {
                     val now = System.currentTimeMillis()
                     if (now - peer.lastResyncAt < 2000)
@@ -174,18 +188,17 @@ constructor(
                         val patch = store.patch(who, context, command.elements, command.files)
                         if (!patch.result.duplicate) {
                             val event = PatchEvent(
-                                context.commandId, patch.result.ack.revision, who.id,
+                                context.commandId, patch.result.ack.revision,
                                 patch.scope, command.elements, command.files.keys.toList(),
                             )
                             audience(boardId)
-                                .filter { patch.scope == "public" || it.participant?.id == who.id }
+                                .filter { patch.scope == "public" || (who.draftKey != null && it.participant?.draftKey == who.draftKey) }
                                 .forEach { send(it, event) }
                         }
                         patch.result
                     }
-                    is StartRoundCommand -> rounds.start(who, context, audience(boardId).mapNotNull { it.participant?.id }.toSet())
-                    is ReadyCommand -> rounds.ready(who, context, command.draftRevision)
-                    is CancelRoundCommand -> rounds.cancel(who, context)
+                    is StartRoundCommand -> rounds.start(who, context)
+                    is StopRoundCommand -> rounds.stop(who, context)
                     is CreatePageCommand -> pages.create(who, context, command.copyCurrent, command.includePoker)
                     is SelectPageCommand -> pages.select(who, context, command.targetPageId)
                 }
@@ -212,7 +225,7 @@ constructor(
                 peer,
                 ErrorEvent(commandId, error.code, error.message),
             )
-            if (error.code in setOf("unauthorized", "room_full"))
+            if (error.code in setOf("unauthorized", "room_full", "protocol_version"))
                 peer.closeAfterDrain(1008, error.code)
             if (error.code == "unavailable" || (error.code == "rate_limit" && commandId == null))
                 peer.closeAfterDrain(1013, error.code)
@@ -231,8 +244,7 @@ constructor(
                             "hello",
                             "patch",
                             "start_round",
-                            "done",
-                            "cancel_round",
+                            "stop_round",
                             "create_page",
                             "select_page",
                             "resync",

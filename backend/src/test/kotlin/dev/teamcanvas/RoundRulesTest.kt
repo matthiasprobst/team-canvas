@@ -8,16 +8,6 @@ class RoundRulesTest {
     private val board = UUID.randomUUID()
 
     @Test
-    fun `a round with unfinished or missing participants cannot reveal`() {
-        val member = RoundMember(UUID.randomUUID(), "Alice", true)
-        assertFalse(RoundRules.allReady(emptyList()))
-        assertFalse(
-            RoundRules.allReady(listOf(member, member.copy(id = UUID.randomUUID(), done = false)))
-        )
-        assertTrue(RoundRules.allReady(listOf(member)))
-    }
-
-    @Test
     fun `commands cannot cross round boundaries even after returning to standard mode`() {
         val page = UUID.randomUUID()
         val old = CommandContext(UUID.randomUUID(), 0, null, page)

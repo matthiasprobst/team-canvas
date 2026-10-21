@@ -9,10 +9,10 @@ See the [company-readiness implementation backlog](.features/company-readiness/R
 The core product is deliberately small:
 
 - **Multi-page canvases:** organize a session across pages, starting blank or copying an existing page.
-- **Poker mode:** collect private drawings and ideas, then publish together when all participants are ready. This is a contribution-and-reveal workflow, not a numeric estimation system.
+- **Poker mode:** collect private drawings and ideas, then let any member publish the saved contributions together. This is a contribution-and-reveal workflow, not a numeric estimation system.
 - **Saved and shared work:** persist acknowledged changes automatically and reopen canvases through an account dashboard; invite colleagues through authenticated sharing links.
 - **Reusable templates:** prepare layouts for Scrum sessions, retrospectives, or architecture discussions and start independent canvases from them.
-- **Required company SSO and privacy:** authenticate every participant and enforce ownership, membership, and private-round visibility on the server.
+- **Required company SSO and privacy:** authenticate every participant and enforce ownership, membership, and private-draft visibility on the server.
 
 Easy company rollout and maintenance are design goals. Prefer a small number of services, established dependencies, explicit permissions, and changes that are easy to review. A new dependency must justify its maintenance cost; fewer dependencies must not mean reimplementing authentication or a drawing editor. Security fixes, reliable saving, safe upgrades, backup/restore, and clear operating instructions are part of the core scope.
 
@@ -28,10 +28,10 @@ The current implementation has rollout gaps; see the [simplicity and company-rea
 - A personal dashboard with **All canvases**, **My canvases**, and **Shared with me**, plus search by canvas name or tags and sorting. Owners can add up to 20 tags per canvas; suggestions come from tags on their own canvases, and template copies keep their source tags.
 - Create canvases, rename those you own, and share invitation links. Recipients sign in and explicitly accept invitations.
 - Mark canvases you own as private templates, or make them public for all signed-in users of this deployment. Owners can edit templates from the Templates page; starting a template opens an independent canvas copied from the **currently selected page's** shared drawings and images. Other pages, private poker drafts, memberships, and invitations are not copied. Changes affect future copies only. Ready-made Scrum/architecture templates are not bundled; create your own layouts.
-- Delete canvases you own from the dashboard’s actions menu. Confirmation permanently removes all contents and invitations for everyone, including active poker rounds; connected viewers are notified.
+- Delete canvases you own from the dashboard’s actions menu. Confirmation permanently removes all contents and invitations for everyone, including active private drafts; connected viewers are notified.
 - Persistent account membership across browsers/devices; independent sessions in multiple tabs.
 - Collaborative shapes, text, sticky notes, images, presence, and shared cursors.
-- Private poker contributions, server-enforced readiness, and automatic all-ready publication.
+- Private poker contributions protected by unlinked draft capabilities; any member can stop poker and reveal saved work.
 - Canvas switching with pending-change protection and draft export.
 
 The backend supports **one active instance per database** and **ten simultaneous connections per canvas**, including multiple tabs. Bots, archive, and revision history are not implemented.
@@ -83,16 +83,15 @@ This development setup explicitly permits HTTP cookies and Keycloak HTTP sign-in
 
 ## Poker rounds
 
-1. The owner chooses **Start poker**. Connected users form a fixed roster; multiple tabs for one account count as one participant.
-2. Existing public elements are locked. Each participant sees only their own new elements and images. Cursors are hidden.
-3. **Ready** first waits for pending edits to be acknowledged, then locks that participant’s draft.
-4. The server publishes all remaining contributions together only when **every roster member is ready**. There is no early-reveal action.
-5. Switching canvases, disconnecting, or signing out does not remove a participant or mark them ready. Reopening restores their saved private draft. Late arrivals join the next round.
-6. The owner can **Cancel round**, deleting private contributions without revealing them.
+1. Any member chooses **Start poker**. Existing shared elements stay visible and locked.
+2. New drawings and images are hidden from other members; shared cursors are suppressed.
+3. Any member chooses **Stop poker and reveal** to publish all server-acknowledged contributions together. The owner can leave without blocking the session.
+4. Hidden drafts are persisted using random browser-held capabilities. The database stores their hashes, with no account/participant mapping. Refreshing the same tab recovers its draft; another device needs the secret. Losing the secret does not prevent other members from revealing saved work.
+5. A stop includes committed edits. Late/unacknowledged edits are kept locally for explicit recovery and are never automatically replayed as public edits. Wait for **Saved** before leaving or stopping poker.
 
-Navigation waits for acknowledgements or asks you to export/discard unsaved changes. A browser crash can still lose unacknowledged work held only in memory. An interrupted private draft is never automatically replayed into another round or canvas.
+Drawing/image/page storage does not retain who created each element. Ownership and membership remain for access control. This does not remove names people write into drawings or provide end-to-end encryption.
 
-Owners can revoke invitation links without removing existing members, or additionally remove all shared members. A new invitation does not invalidate earlier links. Revoking a member during poker preserves the frozen roster; the owner can cancel the round if that member cannot return.
+Page changes are blocked during poker. Navigation protects unsaved edits and draft recovery, but no participant must remain connected or mark themselves ready. A crash can lose edits that never reached the server.
 
 ## Development and checks
 

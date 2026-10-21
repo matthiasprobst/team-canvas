@@ -62,7 +62,7 @@ constructor(private val repository: BoardRepository, private val accounts: Accou
                     throw ClientException("limit", "This canvas has reached its membership limit.")
                 c.update(
                     """INSERT INTO participants(id,board_id,user_id,name,role) VALUES(?,?,?,?,'guest')
-                    ON CONFLICT(user_id,board_id) WHERE user_id IS NOT NULL DO UPDATE SET revoked=false,name=EXCLUDED.name""",
+                    ON CONFLICT(user_id,board_id) DO UPDATE SET revoked=false,name=EXCLUDED.name""",
                     UUID.randomUUID(),
                     id,
                     user.id,
