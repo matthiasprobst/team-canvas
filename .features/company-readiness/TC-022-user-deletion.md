@@ -1,6 +1,6 @@
 # TC-022: Delete users and every canvas they own
 
-Status: In review
+Status: Done
 Priority: P1
 Dependencies: TC-021
 
@@ -10,10 +10,10 @@ Delete users and every canvas they own. Follow the agreed contracts in [the impl
 
 ## Implementation
 
-- [ ] Preview every affected owned canvas and explicitly warn about shared content deletion.
-- [ ] Require deliberate confirmation and deactivate first.
-- [ ] Atomically delete owned canvases and identity; notify connected viewers.
-- [ ] Keep other users canvases and their unattributed drawings.
+- [x] Preview every affected owned canvas and explicitly warn about shared content deletion.
+- [x] Require deliberate confirmation and deactivate first.
+- [x] Atomically delete owned canvases and identity; notify connected viewers.
+- [x] Keep other users canvases and their unattributed drawings.
 
 ## Interfaces and migrations
 
@@ -21,8 +21,8 @@ Initial development: schema files may be consolidated. Reset only explicitly dis
 
 ## Acceptance criteria
 
-- [ ] Repeated and concurrent operations remain consistent.
-- [ ] Deletion and anonymization have separate, unambiguous effects.
+- [x] Repeated and concurrent operations remain consistent.
+- [x] Deletion and anonymization have separate, unambiguous effects.
 
 ## Validation
 
@@ -34,4 +34,6 @@ Commit coherent passing behavior with its tests and docs. Split storage foundati
 
 ## Completion evidence
 
-Implemented role-protected administration, immediate deactivation, keyed identity blocking, anonymization, retained-canvas reassignment and distinct owned-canvas deletion. PostgreSQL/backend suite: 62 passed, no skips. Lifecycle tests include stale previews, confirmation, self-protection and concurrent provisioning. Frontend type-check passed; real SSO/browser role checks pending.
+Typed destructive confirmation, impact checks, deactivation-first revocation and atomic owned-canvas deletion are implemented. PostgreSQL and administration browser checks distinguish deletion from anonymization and preserve others’ canvases.
+
+See [the validation record](validation.md) for commands, checkpoints and release limitations.

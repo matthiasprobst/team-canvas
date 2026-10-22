@@ -1,6 +1,6 @@
 # TC-019: Expire invitations and clarify template publication
 
-Status: In review
+Status: Done
 Priority: P1
 Dependencies: TC-013, TC-018
 
@@ -10,9 +10,9 @@ Expire invitations and clarify template publication. Follow the agreed contracts
 
 ## Implementation
 
-- [ ] Expire invites after seven days; return expiresAt.
-- [ ] Limit active invites to 20 and expire legacy links seven days after migration.
-- [ ] Require explicit deployment-wide publication confirmation.
+- [x] Expire invites after seven days; return expiresAt.
+- [x] Limit active invites to 20; the consolidated initial schema has no legacy invitation migration.
+- [x] Require explicit deployment-wide publication confirmation.
 
 ## Interfaces and migrations
 
@@ -20,8 +20,8 @@ Initial development: schema files may be consolidated. Reset only explicitly dis
 
 ## Acceptance criteria
 
-- [ ] Preview and join enforce expiry and revocation under races.
-- [ ] Existing membership survives link expiry.
+- [x] Preview and join enforce expiry and revocation under races.
+- [x] Existing membership survives link expiry.
 
 ## Validation
 
@@ -33,4 +33,6 @@ Commit coherent passing behavior with its tests and docs. Split storage foundati
 
 ## Completion evidence
 
-Implemented. PostgreSQL/backend suite: 57 passed, no skips, including multi-page copy isolation, atomic quota rollback, and expiry/membership independence. Frontend type-check passed. Browser journey pending.
+Seven-day/20-active invitation limits, expiry display and publication confirmation are implemented. PostgreSQL and authenticated sharing/template browser scenarios pass.
+
+See [the validation record](validation.md) for commands, checkpoints and release limitations.

@@ -1,6 +1,6 @@
 # TC-018: Copy complete independent multi-page templates
 
-Status: In review
+Status: Done
 Priority: P1
 Dependencies: TC-013, TC-017
 
@@ -10,10 +10,10 @@ Copy complete independent multi-page templates. Follow the agreed contracts in [
 
 ## Implementation
 
-- [ ] Copy all ordered pages, including empty pages; select the first.
-- [ ] Copy only live shared elements and referenced images with remapped bindings.
-- [ ] Exclude private data, capabilities, memberships, invites and rounds.
-- [ ] Check quotas atomically and preserve tags without drawing attribution.
+- [x] Copy all ordered pages, including empty pages; select the first.
+- [x] Copy only live shared elements and referenced images with remapped bindings.
+- [x] Exclude private data, capabilities, memberships, invites and rounds.
+- [x] Check quotas atomically and preserve tags without drawing attribution.
 
 ## Interfaces and migrations
 
@@ -21,8 +21,8 @@ Initial development: schema files may be consolidated. Reset only explicitly dis
 
 ## Acceptance criteria
 
-- [ ] Multi-page copies are independent and contain no hidden work.
-- [ ] Failure leaves no partial canvas.
+- [x] Multi-page copies are independent and contain no hidden work.
+- [x] Failure leaves no partial canvas.
 
 ## Validation
 
@@ -34,4 +34,6 @@ Commit coherent passing behavior with its tests and docs. Split storage foundati
 
 ## Completion evidence
 
-Implemented. PostgreSQL/backend suite: 57 passed, no skips, including multi-page copy isolation, atomic quota rollback, and expiry/membership independence. Frontend type-check passed. Browser journey pending.
+All ordered pages, empty pages and referenced public images are independently copied with remapped bindings and atomic quotas. PostgreSQL and template/page browser scenarios pass.
+
+See [the validation record](validation.md) for commands, checkpoints and release limitations.

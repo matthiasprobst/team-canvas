@@ -1,6 +1,6 @@
 # TC-020: Add administrator access and account deactivation
 
-Status: In review
+Status: Done
 Priority: P1
 Dependencies: TC-014, TC-017
 
@@ -10,10 +10,10 @@ Add administrator access and account deactivation. Follow the agreed contracts i
 
 ## Implementation
 
-- [ ] Require validated Keycloak client role team-canvas-admin.
-- [ ] Add paginated admin users and impact preview.
-- [ ] Implement deactivate/reactivate with session revocation and socket closure.
-- [ ] Enforce status across provisioning, HTTP, assets and sockets.
+- [x] Require validated Keycloak client role team-canvas-admin.
+- [x] Add paginated admin users and impact preview.
+- [x] Implement deactivate/reactivate with session revocation and socket closure.
+- [x] Enforce status across provisioning, HTTP, assets and sockets.
 
 ## Interfaces and migrations
 
@@ -21,9 +21,9 @@ Initial development: schema files may be consolidated. Reset only explicitly dis
 
 ## Acceptance criteria
 
-- [ ] Direct admin API requests require the role.
-- [ ] Old credentials cannot bypass local deactivation.
-- [ ] Reactivation requires fresh sessions.
+- [x] Direct admin API requests require the role.
+- [x] Old credentials cannot bypass local deactivation.
+- [x] Reactivation requires fresh sessions.
 
 ## Validation
 
@@ -35,4 +35,6 @@ Commit coherent passing behavior with its tests and docs. Split storage foundati
 
 ## Completion evidence
 
-Implemented role-protected administration, immediate deactivation, keyed identity blocking, anonymization, retained-canvas reassignment and distinct owned-canvas deletion. PostgreSQL/backend suite: 62 passed, no skips. Lifecycle tests include stale previews, confirmation, self-protection and concurrent provisioning. Frontend type-check passed; real SSO/browser role checks pending.
+Verified Keycloak client-role administration, paginated users, impact previews and immediate local deactivation are implemented. PostgreSQL tests and the administration browser scenario pass, including non-admin denial and fresh-login reactivation.
+
+See [the validation record](validation.md) for commands, checkpoints and release limitations.

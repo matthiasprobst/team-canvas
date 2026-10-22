@@ -1,6 +1,6 @@
 # TC-017: Replace readiness poker with member-operated reveal
 
-Status: In review
+Status: Done
 Priority: P0
 Dependencies: TC-016
 
@@ -10,12 +10,12 @@ Replace readiness poker with member-operated reveal. Follow the agreed contracts
 
 ## Implementation
 
-- [ ] Any member can start_round or stop_round.
-- [ ] Keep the shared base visible and locked; reveal saved private contributions atomically.
-- [ ] Remove readiness, rosters, done, and ordinary cancellation controls.
-- [ ] Preserve stale private writes for local recovery; never silently publish them.
-- [ ] Reject old protocol versions and update frontend/backend together.
-- [ ] Consolidate the initial schema; document explicit disposable-data reset.
+- [x] Any member can start_round or stop_round.
+- [x] Keep the shared base visible and locked; reveal saved private contributions atomically.
+- [x] Remove readiness, rosters, done, and ordinary cancellation controls.
+- [x] Preserve stale private writes for local recovery; never silently publish them.
+- [x] Reject old protocol versions and update frontend/backend together.
+- [x] Consolidate the initial schema; document explicit disposable-data reset.
 
 ## Interfaces and migrations
 
@@ -23,10 +23,10 @@ Initial development: schema files may be consolidated. Reset only explicitly dis
 
 ## Acceptance criteria
 
-- [ ] Owner departure does not block reveal.
-- [ ] Concurrent stops reveal once; offline saved contributions are included.
-- [ ] Private associations disappear at reveal.
-- [ ] Frontend build, protocol and browser tests use the new contract.
+- [x] Owner departure does not block reveal.
+- [x] Concurrent stops reveal once; offline saved contributions are included.
+- [x] Private associations disappear at reveal.
+- [x] Frontend build, protocol and browser tests use the new contract.
 
 ## Validation
 
@@ -38,4 +38,6 @@ Commit coherent passing behavior with its tests and docs. Split storage foundati
 
 ## Completion evidence
 
-Implemented the coordinated initial-schema, capability persistence and member-operated poker cutover. `mvn -o test` with PostgreSQL: 55 passed, no skips. Frontend sync tests and production build passed. Real browser qualification remains pending.
+Member-operated start/stop, locked public base, atomic reveal, protocol v2 and local stale-draft recovery are implemented. PostgreSQL tests, sync tests and live protocol/browser scenarios pass, including reveal after the owner disconnects.
+
+See [the validation record](validation.md) for commands, checkpoints and release limitations.

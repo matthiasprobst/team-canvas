@@ -1,6 +1,6 @@
 # TC-013: Enforce configurable ownership, page, and storage quotas
 
-Status: In review
+Status: Done
 Priority: P1
 Dependencies: TC-012
 
@@ -10,10 +10,10 @@ Enforce configurable ownership, page, and storage quotas. Follow the agreed cont
 
 ## Implementation
 
-- [ ] Add validated maxPagesPerCanvas=10 and maxOwnedCanvasesPerUser=20 configuration.
-- [ ] Count owned templates but exclude joined canvases.
-- [ ] Serialize account creation and page growth checks.
-- [ ] Enforce aggregate 20,000,000 element bytes and 128,000,000 image bytes; expose limits to clients.
+- [x] Add validated maxPagesPerCanvas=10 and maxOwnedCanvasesPerUser=20 configuration.
+- [x] Count owned templates but exclude joined canvases.
+- [x] Serialize account creation and page growth checks.
+- [x] Enforce aggregate 20,000,000 element bytes and 128,000,000 image bytes; expose limits to clients.
 
 ## Interfaces and migrations
 
@@ -21,9 +21,9 @@ Initial development: schema files may be consolidated. Reset only explicitly dis
 
 ## Acceptance criteria
 
-- [ ] Concurrent requests cannot exceed quotas.
-- [ ] Lowering limits preserves existing data and rejects growth.
-- [ ] Copies and ownership transfers obey limits.
+- [x] Concurrent requests cannot exceed quotas.
+- [x] Lowering limits preserves existing data and rejects growth.
+- [x] Copies and ownership transfers obey limits.
 
 ## Validation
 
@@ -35,6 +35,6 @@ Commit coherent passing behavior with its tests and docs. Split storage foundati
 
 ## Completion evidence
 
-Implemented configurable backend limits, account locking, aggregate storage checks and authenticated limit metadata. Concurrent quota and lowered-limit regression tests added.
+Configurable 10-page/20-owned-canvas defaults, account/page locking, aggregate budgets and client metadata are implemented. PostgreSQL tests cover concurrent creation, lowered limits, copies and ownership reassignment.
 
-Validation checkpoint: 56 backend tests passed with PostgreSQL 17 and no skips. Helm lint/render passed with overrides; maxPagesPerCanvas=0 was rejected. A live Kubernetes deployment and least-privilege role validation remain release checks.
+See [the validation record](validation.md) for commands, checkpoints and release limitations.

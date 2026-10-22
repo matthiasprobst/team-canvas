@@ -1,6 +1,6 @@
 # TC-014: Package the supported deployment with Helm
 
-Status: In review
+Status: Done
 Priority: P1
 Dependencies: TC-012, TC-013
 
@@ -10,10 +10,10 @@ Package the supported deployment with Helm. Follow the agreed contracts in [the 
 
 ## Implementation
 
-- [ ] Create a chart using external PostgreSQL, Keycloak, ingress and existing Secrets.
-- [ ] Expose limits.maxPagesPerCanvas and limits.maxOwnedCanvasesPerUser with schema validation.
-- [ ] Preserve security contexts, probes, network policies and one Recreate backend.
-- [ ] Make Helm the primary production path.
+- [x] Create a chart using external PostgreSQL, Keycloak, ingress and existing Secrets.
+- [x] Expose limits.maxPagesPerCanvas and limits.maxOwnedCanvasesPerUser with schema validation.
+- [x] Preserve security contexts, probes, network policies and one Recreate backend.
+- [x] Make Helm the primary production path.
 
 ## Interfaces and migrations
 
@@ -21,8 +21,8 @@ Initial development: schema files may be consolidated. Reset only explicitly dis
 
 ## Acceptance criteria
 
-- [ ] Chart lint/render and invalid-value checks pass.
-- [ ] Values reach backend enforcement; no credentials are committed.
+- [x] Chart lint/render and invalid-value checks pass.
+- [x] Values reach backend enforcement; no credentials are committed.
 
 ## Validation
 
@@ -34,6 +34,6 @@ Commit coherent passing behavior with its tests and docs. Split storage foundati
 
 ## Completion evidence
 
-Implemented external-service Helm chart, validated values, one backend, migration-only Job, network protections and quota environment wiring. Helm validation pending.
+Chart, value schema, external services/secrets, migration Job and single Recreate backend are implemented. Lint/render and invalid quota rejection passed; 7-page/12-canvas overrides were rendered. Live company-cluster qualification belongs to TC-025.
 
-Validation checkpoint: 56 backend tests passed with PostgreSQL 17 and no skips. Helm lint/render passed with overrides; maxPagesPerCanvas=0 was rejected. A live Kubernetes deployment and least-privilege role validation remain release checks.
+See [the validation record](validation.md) for commands, checkpoints and release limitations.

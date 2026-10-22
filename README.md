@@ -2,7 +2,7 @@
 
 A self-hosted collaborative canvas for small company teams running Scrum sessions, feature refinement, architecture discussions, and retrospectives. Draw across multiple pages, save and share canvases, reuse templates, and collect ideas privately in poker rounds before revealing them together.
 
-See the [company-readiness implementation backlog](.features/company-readiness/README.md) for the agreed next release; its new poker/privacy/admin behavior is planned until the tickets are validated.
+The core privacy, poker, templates, quotas and administration changes are implemented. See the [checked implementation backlog](.features/company-readiness/README.md) and [validation record](.features/company-readiness/validation.md) for completed work and remaining release gates, including base-image security findings and company-cluster qualification.
 
 ## Scope and design principles
 
@@ -20,7 +20,7 @@ Keep additions tied to those workflows. Chat, video calls, AI assistants, task/p
 
 React/TypeScript and Excalidraw provide the browser UI; Kotlin/Quarkus provides one backend; PostgreSQL stores accounts, drawings, and uploaded images. Caddy serves the UI and proxies requests. Company deployments use an existing Keycloak identity provider. No Redis, message broker, separate image store, or application SaaS account is required. Tailwind and Vite are build tooling, and the UI is English.
 
-The current implementation has rollout gaps; see the [simplicity and company-readiness review](docs/simplicity-review.md) for evidence and proposed priorities. The bundled Compose setup is for disposable development data; use the Helm deployment for the company configuration.
+The [original simplicity review](docs/simplicity-review.md) records the starting point; the [validation record](.features/company-readiness/validation.md) tracks current rollout gaps. The bundled Compose setup is for disposable development data; use the Helm deployment for the company configuration.
 
 ## Features
 
@@ -44,7 +44,10 @@ Install Docker with the Compose plugin. The bundled Compose setup is for develop
 test -f .env || cp .env.example .env
 openssl rand -hex 24
 # Put the generated password into .env as DB_PASSWORD, then:
-docker compose up --build -d --wait --wait-timeout 300
+docker compose build
+docker compose up -d --wait db keycloak
+docker compose run --rm --no-deps backend migrate
+docker compose up -d --wait --wait-timeout 300
 ```
 
 Open **http://localhost:8088** and choose **Login with SSO**. The browser signs in through the separate development Keycloak URL at **http://localhost:8180/auth**. Compose includes a development realm with these example accounts:

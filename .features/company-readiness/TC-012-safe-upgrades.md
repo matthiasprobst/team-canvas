@@ -1,6 +1,6 @@
 # TC-012: Make startup and schema upgrades non-destructive
 
-Status: In review
+Status: In progress
 Priority: P0
 Dependencies: TC-011
 
@@ -10,10 +10,10 @@ Make startup and schema upgrades non-destructive. Follow the agreed contracts in
 
 ## Implementation
 
-- [ ] Remove startup cleanup and explicitly disable Flyway cleaning.
-- [ ] Add migration-only execution in the existing image; separate runtime and migration credentials.
-- [ ] Validate schema during production startup; keep development migrations automatic.
-- [ ] Standardize JDK 21, Maven 3.9+, and Node 24.
+- [x] Remove startup cleanup and explicitly disable Flyway cleaning.
+- [x] Add migration-only execution in the existing image; separate runtime and migration credentials.
+- [x] Validate schema during production startup; keep development migrations automatic.
+- [x] Standardize JDK 21, Maven 3.9+, and Node 24.
 
 ## Interfaces and migrations
 
@@ -22,7 +22,7 @@ Initial development: schema files may be consolidated. Reset only explicitly dis
 ## Acceptance criteria
 
 - [ ] Migration validation failure preserves populated data.
-- [ ] Migration command opens no HTTP endpoints; runtime requires no DDL.
+- [x] Migration command opens no HTTP endpoints; runtime requires no DDL.
 
 ## Validation
 
@@ -34,6 +34,6 @@ Commit coherent passing behavior with its tests and docs. Split storage foundati
 
 ## Completion evidence
 
-Implemented non-destructive defaults, standalone migration entry point, production configuration checks and JDK 21 containers. Initial `mvn -o test` passed (36 executed, 17 integration tests skipped before the disposable database was started). Production rejection regression added; database validation follows.
+Standalone migration succeeded on a fresh Compose database. Startup rejected its unmigrated schema without cleaning it. All 65 backend tests pass with PostgreSQL, including application create/join under a DML-only role that cannot create/alter tables or modify Flyway history. Populated migration-failure rehearsal remains open.
 
-Validation checkpoint: 56 backend tests passed with PostgreSQL 17 and no skips. Helm lint/render passed with overrides; maxPagesPerCanvas=0 was rejected. A live Kubernetes deployment and least-privilege role validation remain release checks.
+See [the validation record](validation.md) for commands, checkpoints and release limitations.

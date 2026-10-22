@@ -1,6 +1,6 @@
 # Simplicity and company-readiness review
 
-Reviewed 2026-10-21 against the current working tree. This is a source/configuration review, with the local checks recorded below; it does not certify a deployed environment. Recommendations are proposals, not implemented fixes.
+Historical baseline reviewed 2026-10-21 before the company-readiness implementation. See [current implementation evidence](../.features/company-readiness/validation.md) for completed changes and open release gates. This is a source/configuration review, with the local checks recorded below; it does not certify a deployed environment. Recommendations are proposals, not implemented fixes.
 
 The architecture is a reasonable fit for a small internal collaboration tool. Keep the single backend, PostgreSQL, existing editor, and mandatory SSO. The largest obstacles to an easy company change request are safe deployment and upgrades, incomplete interaction between pages and templates, and data lifecycle procedures. A broad rewrite or more collaboration features would make those obstacles harder to resolve.
 

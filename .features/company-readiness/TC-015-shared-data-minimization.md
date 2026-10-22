@@ -1,6 +1,6 @@
 # TC-015: Remove persistent authorship from shared content
 
-Status: In review
+Status: Done
 Priority: P0
 Dependencies: TC-012
 
@@ -10,9 +10,9 @@ Remove persistent authorship from shared content. Follow the agreed contracts in
 
 ## Implementation
 
-- [ ] Scrub public element/image authors and page creators with forward migrations.
-- [ ] Remove account attribution from shared command receipts and public copies.
-- [ ] Keep authorization membership independent from drawing storage.
+- [x] Consolidate the initial schema without public element/image authors or page creators (approved initial-development reset policy).
+- [x] Remove account attribution from shared command receipts and public copies.
+- [x] Keep authorization membership independent from drawing storage.
 
 ## Interfaces and migrations
 
@@ -20,8 +20,8 @@ Initial development: schema files may be consolidated. Reset only explicitly dis
 
 ## Acceptance criteria
 
-- [ ] Shared content has no persisted account-to-element mapping.
-- [ ] Existing drawings survive migration.
+- [x] Shared content has no persisted account-to-element mapping.
+- [x] Initial schema reset policy is documented; no legacy upgrade compatibility is claimed.
 
 ## Validation
 
@@ -33,4 +33,6 @@ Commit coherent passing behavior with its tests and docs. Split storage foundati
 
 ## Completion evidence
 
-Implemented the coordinated initial-schema, capability persistence and member-operated poker cutover. `mvn -o test` with PostgreSQL: 55 passed, no skips. Frontend sync tests and production build passed. Real browser qualification remains pending.
+The approved consolidated V1 schema removes persistent element/image/page authors and account-linked drawing receipts. Membership remains separate. Schema assertions and public/private protocol checks pass.
+
+See [the validation record](validation.md) for commands, checkpoints and release limitations.

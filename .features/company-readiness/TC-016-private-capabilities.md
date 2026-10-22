@@ -1,6 +1,6 @@
 # TC-016: Introduce unlinked private-draft persistence
 
-Status: In review
+Status: Done
 Priority: P0
 Dependencies: TC-013, TC-015
 
@@ -10,10 +10,10 @@ Introduce unlinked private-draft persistence. Follow the agreed contracts in [th
 
 ## Implementation
 
-- [ ] Use browser-generated random capabilities and store only hashes.
-- [ ] Require current membership and a valid capability for private reads/writes.
-- [ ] Scope receipts to canvas or private capability, not accounts.
-- [ ] Bound drafts to 200 per round and apply storage/rate limits.
+- [x] Use browser-generated random capabilities and store only hashes.
+- [x] Require current membership and a valid capability for private reads/writes.
+- [x] Scope receipts to canvas or private capability, not accounts.
+- [x] Bound drafts to 200 per round and apply storage/rate limits.
 
 ## Interfaces and migrations
 
@@ -21,9 +21,9 @@ Initial development: schema files may be consolidated. Reset only explicitly dis
 
 ## Acceptance criteria
 
-- [ ] Wrong capability and revoked membership fail.
-- [ ] No persisted account/session/participant mapping identifies a private draft.
-- [ ] Retries remain idempotent.
+- [x] Wrong capability and revoked membership fail.
+- [x] No persisted account/session/participant mapping identifies a private draft.
+- [x] Retries remain idempotent.
 
 ## Validation
 
@@ -35,4 +35,6 @@ Commit coherent passing behavior with its tests and docs. Split storage foundati
 
 ## Completion evidence
 
-Implemented the coordinated initial-schema, capability persistence and member-operated poker cutover. `mvn -o test` with PostgreSQL: 55 passed, no skips. Frontend sync tests and production build passed. Real browser qualification remains pending.
+Capability hashes, membership checks, private image authorization, scoped receipts and draft bounds are implemented. PostgreSQL tests and the live authenticated WebSocket smoke test pass, including wrong-capability rejection and idempotent retries.
+
+See [the validation record](validation.md) for commands, checkpoints and release limitations.

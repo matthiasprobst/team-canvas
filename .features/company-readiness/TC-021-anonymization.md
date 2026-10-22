@@ -1,6 +1,6 @@
 # TC-021: Anonymize users while retaining their canvases
 
-Status: In review
+Status: Done
 Priority: P1
 Dependencies: TC-020
 
@@ -10,11 +10,11 @@ Anonymize users while retaining their canvases. Follow the agreed contracts in [
 
 ## Implementation
 
-- [ ] Block reprovisioning with keyed identity fingerprints stored without placeholder mapping.
-- [ ] Create distinct non-login deleted_user_N replacement owners.
-- [ ] Transfer all canvases/templates; remove original identity, membership, session and duplicated names.
-- [ ] Revoke associated invitations; retain other members and content.
-- [ ] Allow explicit quota-checked reassignment to real accounts.
+- [x] Block reprovisioning with keyed identity fingerprints stored without placeholder mapping.
+- [x] Create distinct non-login deleted_user_N replacement owners.
+- [x] Transfer all canvases/templates; remove original identity, membership, session and duplicated names.
+- [x] Revoke associated invitations; retain other members and content.
+- [x] Allow explicit quota-checked reassignment to real accounts.
 
 ## Interfaces and migrations
 
@@ -22,9 +22,9 @@ Initial development: schema files may be consolidated. Reset only explicitly dis
 
 ## Acceptance criteria
 
-- [ ] Identity disappears from live account data.
-- [ ] Retained content and collaborator access survive.
-- [ ] Replayed credentials cannot recreate an offboarded account.
+- [x] Identity disappears from live account data.
+- [x] Retained content and collaborator access survive.
+- [x] Replayed credentials cannot recreate an offboarded account.
 
 ## Validation
 
@@ -36,4 +36,6 @@ Commit coherent passing behavior with its tests and docs. Split storage foundati
 
 ## Completion evidence
 
-Implemented role-protected administration, immediate deactivation, keyed identity blocking, anonymization, retained-canvas reassignment and distinct owned-canvas deletion. PostgreSQL/backend suite: 62 passed, no skips. Lifecycle tests include stale previews, confirmation, self-protection and concurrent provisioning. Frontend type-check passed; real SSO/browser role checks pending.
+Unlinked identity fingerprints, distinct non-login placeholders, content retention and quota-checked reassignment are implemented. PostgreSQL and administration browser checks verify blocked reprovisioning and retained collaborator access.
+
+See [the validation record](validation.md) for commands, checkpoints and release limitations.

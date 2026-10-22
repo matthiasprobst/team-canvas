@@ -10,10 +10,10 @@ Record the agreed architecture and backlog. Follow the agreed contracts in [the 
 
 ## Implementation
 
-- [ ] Document authorship-free shared storage and member-operated poker.
-- [ ] Document unlinked private capabilities and the privacy limits of identifying content.
-- [ ] Document Helm defaults of 10 pages and 20 owned canvases.
-- [ ] Document administrator deactivation, anonymization, deletion, and their distinct content effects.
+- [x] Document authorship-free shared storage and member-operated poker.
+- [x] Document unlinked private capabilities and the privacy limits of identifying content.
+- [x] Document Helm defaults of 10 pages and 20 owned canvases.
+- [x] Document administrator deactivation, anonymization, deletion, and their distinct content effects.
 
 ## Interfaces and migrations
 
@@ -21,8 +21,8 @@ Initial development: schema files may be consolidated. Reset only explicitly dis
 
 ## Acceptance criteria
 
-- [ ] All tickets have dependencies and observable acceptance criteria.
-- [ ] Current versus planned behavior is clearly distinguished.
+- [x] All tickets have dependencies and observable acceptance criteria.
+- [x] Current versus planned behavior is clearly distinguished.
 
 ## Validation
 
@@ -34,4 +34,6 @@ Commit coherent passing behavior with its tests and docs. Split storage foundati
 
 ## Completion evidence
 
-Planning documents and backlog created; Markdown references checked. No runtime behavior claimed.
+Architecture, README scope, security model, operations runbook and dependency-ordered tickets are committed.
+
+See [the validation record](validation.md) for commands, checkpoints and release limitations.

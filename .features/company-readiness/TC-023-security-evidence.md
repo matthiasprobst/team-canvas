@@ -1,6 +1,6 @@
 # TC-023: Verify security boundaries and release dependencies
 
-Status: Todo
+Status: In progress
 Priority: P1
 Dependencies: TC-019, TC-022
 
@@ -12,9 +12,12 @@ Verify security boundaries and release dependencies. Follow the agreed contracts
 
 - [ ] Verify claims, cookies, origins, proxy headers and external revocation timing.
 - [ ] Reject unsupported editor actions and inspect approved browser destinations.
-- [ ] Move build dependencies to devDependencies.
-- [ ] Produce dependency/license inventories, SBOMs and source/image/secret scans.
-- [ ] Pin CI actions immutably and audit privacy-safe telemetry.
+- [x] Move build dependencies to devDependencies.
+- [x] Produce a resolved dependency/license inventory and run source/image/secret scans.
+- [ ] Generate and retain final release SBOM artifacts.
+- [ ] Fix the HIGH base-image findings and rescan.
+- [x] Pin CI actions immutably.
+- [ ] Complete the telemetry and browser-destination audit.
 
 ## Interfaces and migrations
 
@@ -35,4 +38,6 @@ Commit coherent passing behavior with its tests and docs. Split storage foundati
 
 ## Completion evidence
 
-Pending implementation and validation.
+Dependency overrides eliminate eight initial HIGH lockfile findings. The updated source scan has zero HIGH/CRITICAL findings and zero secrets; one LOW remains. Inventory covers 369 resolved packages with bundled MIT texts reviewed for missing metadata. Image scans found four backend and five frontend HIGH findings; no exceptions are approved. SBOM steps are configured in CI but final artifacts were not generated locally.
+
+See [the validation record](validation.md) for commands, checkpoints and release limitations.
