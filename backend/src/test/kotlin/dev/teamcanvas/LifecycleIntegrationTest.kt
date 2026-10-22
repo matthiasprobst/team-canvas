@@ -42,6 +42,37 @@ class LifecycleIntegrationTest {
     @AfterAll fun cleanup() { source.connection.use { it.update("DROP SCHEMA IF EXISTS $schema CASCADE") } }
     private fun act(actor: UUID, target: UUID, action: String) = service.change(actor, target, action, service.impact(target).token, action.uppercase())
 
+    @Test fun `runtime role can create and join canvases without schema privileges`() {
+        val role = "runtime_" + UUID.randomUUID().toString().replace("-", "")
+        source.connection.use { c ->
+            c.update("CREATE ROLE $role NOLOGIN")
+            c.update("GRANT USAGE ON SCHEMA $schema TO $role")
+            c.update("GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA $schema TO $role")
+            c.update("REVOKE ALL ON $schema.flyway_schema_history FROM $role")
+            c.update("GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA $schema TO $role")
+        }
+        try {
+            val restricted = PGSimpleDataSource().apply {
+                setURL(System.getenv("TEAM_CANVAS_TEST_JDBC_URL")); user = source.user; password = source.password
+                currentSchema = schema; options = "-c role=$role"
+            }
+            val runtimeRepository = BoardRepository(restricted)
+            val runtimeAccounts = Accounts(runtimeRepository)
+            val runtimeAccess = CanvasAccess(runtimeRepository, runtimeAccounts)
+            val owner = identity("Runtime role")
+            val board = runtimeAccess.create("Created without DDL privileges", owner)
+            val joined = runtimeAccess.join(board.id, JoinRequest(), owner)
+            assertEquals("host", runtimeAccess.authenticate(board.id, joined.token, owner).role)
+            restricted.connection.use { c ->
+                assertThrows(java.sql.SQLException::class.java) { c.update("CREATE TABLE forbidden_ddl(id int)") }
+                assertThrows(java.sql.SQLException::class.java) { c.update("ALTER TABLE boards ADD COLUMN forbidden int") }
+                assertThrows(java.sql.SQLException::class.java) { c.update("DELETE FROM flyway_schema_history") }
+            }
+        } finally {
+            source.connection.use { c -> c.update("DROP OWNED BY $role"); c.update("DROP ROLE $role") }
+        }
+    }
+
     @Test fun `restore reapplies anonymous and destructive offboarding instead of resurrecting identities`() {
         val admin = accounts.current(identity("Administrator")).id
         val anonymized = identity("Restore anonymous identity")

@@ -24,7 +24,6 @@ export default function Admin() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   useEffect(() => {
-    useEffect(() => {
     if (!account.admin || impact?.user.status !== "placeholder") return;
     const abort = new AbortController();
     void request<{ items: User[] }>(`/api/admin/users?q=${encodeURIComponent(targetQuery)}`, undefined, "GET", abort.signal)
@@ -32,7 +31,8 @@ export default function Admin() {
       .catch(e => { if (!abort.signal.aborted) setError(errorMessage(e)); });
     return () => abort.abort();
   }, [account.admin, impact?.user.status, targetQuery]);
-  if (!account.admin) return;
+  useEffect(() => {
+    if (!account.admin) return;
     const abort = new AbortController();
     setError("");
     void request<{ items: User[]; nextOffset: number | null }>(`/api/admin/users?offset=${offset}&q=${encodeURIComponent(query)}`, undefined, "GET", abort.signal)

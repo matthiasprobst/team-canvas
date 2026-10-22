@@ -35,6 +35,12 @@ class AdminService @Inject constructor(
         }
     }
 
+    private fun impactToken(id: UUID, status: String, name: String, canvases: List<ImpactCanvas>): String {
+        // Length-prefix every field so arbitrary canvas/user names cannot change field boundaries.
+        val fields = listOf(id.toString(), status, name) + canvases.flatMap { listOf(it.id.toString(), it.name) }
+        return blocks.impact(fields.joinToString("") { "${it.length}:$it" })
+    }
+
     private fun impact(c: Connection, id: UUID): UserImpact {
         val user = c.query("SELECT id,display_name,status FROM app_users WHERE id=?", id) { r ->
             if (!r.next()) throw ClientException("not_found", "User no longer exists.")
@@ -43,7 +49,7 @@ class AdminService @Inject constructor(
         val canvases = c.query("SELECT id,name FROM boards WHERE owner_user_id=? ORDER BY id", id) { r ->
             buildList { while (r.next()) add(ImpactCanvas(r.getObject(1, UUID::class.java), r.getString(2))) }
         }
-        val token = blocks.impact("$id:${user.status}:${user.displayName}:" + canvases.joinToString { "${it.id}:${it.name}" })
+        val token = impactToken(id, user.status, user.displayName, canvases)
         return UserImpact(user.copy(ownedCanvases = canvases.size), canvases, token)
     }
     fun impact(id: UUID): UserImpact = repository.transaction { impact(it, id) }
@@ -75,8 +81,8 @@ class AdminService @Inject constructor(
             c.query("SELECT id FROM app_users WHERE id=? FOR UPDATE", id) { if (!it.next()) throw ClientException("not_found", "User no longer exists.") }
             val preview = impact(c, id)
             // Deactivation changed status; compare the canvas snapshot independently below.
-            val expected = blocks.impact("$id:active:${preview.user.displayName}:" + preview.canvases.joinToString { "${it.id}:${it.name}" })
-            val expectedInactive = blocks.impact("$id:deactivated:${preview.user.displayName}:" + preview.canvases.joinToString { "${it.id}:${it.name}" })
+            val expected = impactToken(id, "active", preview.user.displayName, preview.canvases)
+            val expectedInactive = impactToken(id, "deactivated", preview.user.displayName, preview.canvases)
             if (token != expected && token != expectedInactive) throw ClientException("conflict", "Canvas ownership changed. Review a fresh preview.")
             val ids = preview.canvases.map { it.id }
             ids.forEach { repository.board(c, it) }
