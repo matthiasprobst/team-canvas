@@ -9,6 +9,7 @@ Work is committed on `company-readiness` in `/tmp/team-canvas-company-readiness`
 | PostgreSQL/backend | `TEAM_CANVAS_TEST_JDBC_URL=jdbc:postgresql://localhost:55439/qualification DB_USER=board DB_PASSWORD=board-test mvn -o verify` from `backend`: **65 passed, zero failures/errors/skips**, production augmentation passed. Separate test database avoids colliding with the running app's database-wide writer lock. |
 | Runtime database permissions | Actual account/canvas create, join and authentication succeed with DML grants; CREATE TABLE, ALTER TABLE and Flyway-history mutation fail. |
 | Frontend | Production image build and `npm run test:sync --prefix frontend` passed; four sync tests. Images use Node 24/npm 11.19.1. Host test runner used Node 22.15.0. |
+| Patched image stack | Updated backend/frontend images rebuilt; Compose services healthy. Caddy config validation passed. Authenticated WebSocket smoke passed through the rebuilt frontend: public replay, private data/capabilities, member reveal, stale writes, multipage image copy and ten-connection limit. |
 | Initial deployment | Isolated Compose stack `team-canvas-readiness`, PostgreSQL 17.11, application `http://localhost:18098`, development Keycloak `http://localhost:18198/auth`. Unmigrated startup failed closed; separate `docker compose run --rm --no-deps backend migrate` succeeded, then backend became healthy. |
 | Live protocol | `BASE_URL=… BROWSER_EXECUTABLE=… node tests/smoke.mjs`: public replay, private elements/images, wrong capability rejection, member reveal after owner departure, stale private-write rejection, page/image copying and ten connections passed. |
 | Browser flows | Nine original Playwright scenarios passed in the first run. The added administration scenario subsequently passed separately after fixing a misplaced React hook, an asynchronous test race and a locator. Screenshots captured desktop confirmation and mobile administration. |
@@ -26,20 +27,21 @@ The harness requires test-only Keycloak users `load01`…`load10`, with complete
 
 ## Release gates still open
 
-- [ ] Fix and rescan base-image vulnerabilities. Trivy found **four HIGH** Go findings in backend `/usr/bin/pebble`, and **five HIGH** Go/x/net findings in frontend Caddy. No secret findings and no approved vulnerability exceptions. Candidate Dockerfile changes were reverted when wrap-up was requested; the replacement builds were stopped.
-- [ ] Generate and retain final frontend/backend SBOMs and approved license/vulnerability reports. CI includes generation and HIGH/CRITICAL gates; those jobs were not executed here.
+- [x] Rebuild and rescan runtime images. Backend now uses `eclipse-temurin:21-jre-noble`; Caddy 2.11.7 is built with Go 1.27.3 and `golang.org/x/net` 0.60.0. Trivy found zero HIGH/CRITICAL findings and zero secrets in both images. Remaining findings: backend 27 MEDIUM and 4 LOW; frontend one UNKNOWN. No exceptions have been approved. See the retained [image scan report](artifacts/security/image-scan-2026-10-22.md) and exact-image SBOMs under `artifacts/sbom/`.
+- [x] Generate and retain CycloneDX SBOMs for the rebuilt local release candidate. Backend image `sha256:3d3edd3e0f1b33d3b689f34a2870b4ae30e113820b3ff25b07d1bcfae559d54e` has 336 components; frontend image `sha256:6476b3e989e69a4ecf13e8914097889ac890af00e159c4b2259579e3f2ca7b10` has 183 components. CI generation and HIGH/CRITICAL gates remain the repeatable release path.
+- [ ] Review remaining MEDIUM/LOW/UNKNOWN image findings and approve or remediate them. Run the retained scans and SBOM generation against the final published image digests.
 - [ ] Run one clean, uninterrupted complete browser suite. An overlapping rerun hit timeouts and shared artifact-directory collisions; separate passing scenarios do not establish a green full-suite rerun.
 - [ ] Repeat the load run without competing builds/scans; investigate if p95 still exceeds one second, then exercise real-network slow readers and reconnect behavior.
 - [ ] Rehearse migration rejection against populated retained data and a full PostgreSQL dump/restore with independently retained offboarding state. Initial schema consolidation was explicitly authorized; no legacy upgrade compatibility is claimed.
 - [ ] Install Helm in the target company cluster and verify ingress, TLS/CA trust, policies, runtime/migration credentials, external Keycloak revocation timing, backup retention and measured RPO/RTO.
 - [ ] Complete the browser-destination/telemetry review and resolve any remaining deployment-specific security findings.
 
-Scanned local image identifiers (before any future rebuild):
+Current scanned local image identifiers:
 
 | Image | Scan identifier |
 | --- | --- |
-| `team-canvas-readiness-backend` | `sha256:a25ed6bbda90b58ecb9633622ab601f2e85643cd32f4bc7049edb53922fa4a82` |
-| `team-canvas-readiness-frontend` | `sha256:8450dbdb08fbe42ac32be9fec6edc226245928d324c5a0a54f58ed7b59f7951e` |
+| `team-canvas-readiness-backend` | `sha256:3d3edd3e0f1b33d3b689f34a2870b4ae30e113820b3ff25b07d1bcfae559d54e` |
+| `team-canvas-readiness-frontend` | `sha256:6476b3e989e69a4ecf13e8914097889ac890af00e159c4b2259579e3f2ca7b10` |
 
 Raw logs, Trivy JSON and browser artifacts are local temporary evidence under `/tmp/readiness-*` and the worktree's ignored `test-results/`; they are not committed release artifacts.
 

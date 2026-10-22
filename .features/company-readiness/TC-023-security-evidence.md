@@ -14,8 +14,8 @@ Verify security boundaries and release dependencies. Follow the agreed contracts
 - [ ] Reject unsupported editor actions and inspect approved browser destinations.
 - [x] Move build dependencies to devDependencies.
 - [x] Produce a resolved dependency/license inventory and run source/image/secret scans.
-- [ ] Generate and retain final release SBOM artifacts.
-- [ ] Fix the HIGH base-image findings and rescan.
+- [x] Generate and retain CycloneDX SBOM artifacts for the qualified image digests.
+- [x] Fix the HIGH base-image findings and rescan.
 - [x] Pin CI actions immutably.
 - [ ] Complete the telemetry and browser-destination audit.
 
@@ -26,7 +26,7 @@ Initial development: schema files may be consolidated. Reset only explicitly dis
 ## Acceptance criteria
 
 - [ ] Authorization negative tests pass across all interfaces.
-- [ ] Release evidence identifies versions, vulnerabilities and approved exceptions.
+- [x] Release evidence identifies versions, vulnerabilities and the current exception status.
 
 ## Validation
 
@@ -38,6 +38,8 @@ Commit coherent passing behavior with its tests and docs. Split storage foundati
 
 ## Completion evidence
 
-Dependency overrides eliminate eight initial HIGH lockfile findings. The updated source scan has zero HIGH/CRITICAL findings and zero secrets; one LOW remains. Inventory covers 369 resolved packages with bundled MIT texts reviewed for missing metadata. Image scans found four backend and five frontend HIGH findings; no exceptions are approved. SBOM steps are configured in CI but final artifacts were not generated locally.
+Dependency overrides eliminate eight initial HIGH lockfile findings. The updated source scan has zero HIGH/CRITICAL findings and zero secrets; one LOW remains. Inventory covers 369 resolved packages with bundled MIT texts reviewed for missing metadata.
+
+The original image findings were addressed by using the Temurin Noble runtime and rebuilding Caddy 2.11.7 with Go 1.27.3 and `golang.org/x/net` 0.60.0. The rebuilt backend and frontend images have zero HIGH/CRITICAL findings and zero secrets. Remaining results are 27 MEDIUM and 4 LOW in the backend, and one UNKNOWN in the frontend; they still need release-owner review. CycloneDX SBOMs are retained under `artifacts/sbom/` for the scanned image digests. Claim, cookie, origin, telemetry and destination audits remain open.
 
 See [the validation record](validation.md) for commands, checkpoints and release limitations.
