@@ -12,16 +12,15 @@
     "prebuild": "node scripts/copy-fonts.mjs",
     "test:sync": "tsc --ignoreConfig --target es2022 --module commonjs --moduleResolution bundler --strict --noUnusedLocals --noUnusedParameters --skipLibCheck --outDir ../.test-build src/protocol.ts src/protocolCodec.ts src/syncCore.ts src/syncSession.ts src/draftExport.ts && node --test ../tests/*.test.mjs",
     "test:e2e": "playwright test --config ../tests/browser/playwright.config.mjs",
-    "typecheck": "tsc --noEmit --incremental false"
+    "typecheck": "tsc --noEmit --incremental false",
+    "inventory": "node scripts/dependency-inventory.mjs"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "0.18.1",
-    "@tailwindcss/vite": "^4.3.3",
     "lucide-react": "^1.59.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "react-router-dom": "^7.18.4",
-    "tailwindcss": "^4.3.3"
+    "react-router-dom": "^7.18.4"
   },
   "devDependencies": {
     "@types/react": "^19.1.8",
@@ -29,6 +28,23 @@
     "@vitejs/plugin-react": "^6.1.2",
     "playwright": "1.56.1",
     "typescript": "~7.0.2",
-    "vite": "^8.3.4"
+    "vite": "^8.3.4",
+    "@tailwindcss/vite": "^4.3.3",
+    "tailwindcss": "^4.3.3"
+  },
+  "overrides": {
+    "@excalidraw/excalidraw": {
+      "nanoid": "^3.3.20",
+      "sass": "^1.106.0"
+    },
+    "@excalidraw/mermaid-to-excalidraw": {
+      "nanoid": "^5.1.16"
+    },
+    "lodash-es": "^4.18.1"
+  },
+  "packageManager": "npm@11.19.1",
+  "engines": {
+    "node": ">=24 <25",
+    "npm": "11.19.1"
   }
 }

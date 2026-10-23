@@ -12,6 +12,7 @@ export function useBoardAssets(
   files: Files,
   controller: SyncSession
 ) {
+  const roundId = controller.view().snapshot?.board.roundId;
   const missingAssetsKey = JSON.stringify(
     [
       ...new Set(
@@ -32,7 +33,7 @@ export function useBoardAssets(
       while (cursor < ids.length && !abort.signal.aborted) {
         const id = ids[cursor++];
         try {
-          const file = await fetchAsset(boardId, id, token, abort.signal);
+          const file = await fetchAsset(boardId, id, token, abort.signal, roundId);
           if (!abort.signal.aborted) loaded[id] = file;
         } catch (error) {
           if (!abort.signal.aborted)
@@ -44,5 +45,5 @@ export function useBoardAssets(
       if (!abort.signal.aborted && Object.keys(loaded).length) controller.addFiles(loaded);
     });
     return () => abort.abort();
-  }, [boardId, token, online, missingAssetsKey, controller]);
+  }, [boardId, token, online, missingAssetsKey, controller, roundId]);
 }

@@ -19,21 +19,7 @@ const board = (value: unknown) =>
 const pages = (value: unknown) =>
   Array.isArray(value) &&
   value.every((page) => object(page) && typeof page.id === "string" && integer(page.position));
-const round = (value: unknown) =>
-  value === null ||
-  (object(value) &&
-    typeof value.id === "string" &&
-    typeof value.done === "boolean" &&
-    typeof value.included === "boolean" &&
-    integer(value.draftRevision) &&
-    Array.isArray(value.members) &&
-    value.members.every(
-      (member) =>
-        object(member) &&
-        typeof member.id === "string" &&
-        typeof member.name === "string" &&
-        typeof member.done === "boolean"
-    ));
+const round = (value: unknown) => value === null || (object(value) && typeof value.id === "string");
 const elements = (value: unknown) =>
   Array.isArray(value) &&
   value.length <= 4000 &&
@@ -78,7 +64,6 @@ export function parseServerEvent(text: string): ServerEvent {
       valid =
         typeof value.commandId === "string" &&
         integer(value.revision) &&
-        typeof value.actorId === "string" &&
         (value.scope === "public" || value.scope === "private") &&
         elements(value.elements) &&
         strings(value.fileIds);

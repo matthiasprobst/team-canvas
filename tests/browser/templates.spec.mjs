@@ -51,6 +51,7 @@ test('private templates stay owner-only and public templates start independent c
     await a.getByRole('button', { name: 'Template settings', exact: true }).click();
     const publicSettings = a.getByRole('dialog', { name: 'Template settings' });
     await publicSettings.getByLabel('Who can find and start this template?').selectOption('public');
+    a.once('dialog', dialog => dialog.accept());
     await publicSettings.getByRole('button', { name: 'Save settings' }).click();
 
     await b.reload();

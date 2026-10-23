@@ -124,6 +124,7 @@ object ElementValidation {
             validateNested(raw, 0)
             (raw.deepCopy<JsonNode>() as ObjectNode).apply {
                 remove(raw.fieldNames().asSequence().filter { it !in fields }.toList())
+                put("updated", 0)
                 defaults(this)
             }
         }
@@ -441,6 +442,8 @@ object ElementValidation {
                     }
                     .toList()
             )
+            sanitized.put("created", 0)
+            sanitized.remove("lastRetrieved")
             for (field in listOf("created", "lastRetrieved")) sanitized.get(field)?.let {
                 finite(it, 1e16)
             }

@@ -11,15 +11,12 @@ Team Canvas uses a React/TypeScript frontend with Excalidraw, a Quarkus/Kotlin b
 - `CanvasAccess` manages ownership, durable memberships, invitations, and independent sessions.
 - `CanvasCatalog` returns authorized metadata pages and validates owner renames.
 - `BoardStore` applies scene permissions and storage quotas. `SceneRepository` owns scene SQL and accepts the current transaction connection.
-- `RoundService` and `RoundRules` manage the round roster, readiness, cancellation, and publication.
-- `BoardRepository` handles transactions, row locks, persisted readiness, and command receipts.
+- `RoundService` and `RoundRules` manage capability-protected private contributions and publication; there is no participant roster or readiness gate.
+- `BoardRepository` handles transactions, row locks, and command receipts.
 - `RoomHub` coordinates board operations and authorized delivery; `BoardSocket` adapts WebSocket callbacks. `SocketCommandCodec` decodes mutations and `ServerEvents` defines outgoing wire types.
-- `PeerConnection` owns socket details; `OutboundQueue` provides ordered, bounded delivery and draining before closure.
 - `AccessPolicy`, `RequestLimits`, and `SingleWriterGuard` enforce identity, allowed origins, resource budgets, and exclusive backend ownership.
 - `syncSession.ts` maintains authoritative state, pending edits, acknowledgements, retries, and draft recovery.
-- `useBoardSession.ts` subscribes React to that state. `boardTransport.ts` owns sockets, retries, and timers; `editorAdapter.ts` owns Excalidraw conversions, scene updates, and cursors; `useBoardAssets.ts` owns bounded downloads. All session errors pass through `SyncSession`.
-- `useCanvasList.ts` owns catalogue requests, pagination, deduplication, and cancellation for the dashboard and switcher. Each cursor belongs to one filter set.
-- `useBoardNavigation.ts` owns navigation and browser-unload guards. `draftExport.ts` builds exports containing only the draft's referenced files. `PageControls` owns page controls and their dialog.
+- `useBoardSession.ts` connects that state to React, WebSockets, asset loading, and the editor.
 
 Kotlin production and test sources use the package `dev.teamcanvas`. Database migrations live in `backend/src/main/resources/db/migration/` and run through Flyway.
 
@@ -29,13 +26,11 @@ Changes use object-level last-writer-wins reconciliation. Accepted changes are e
 
 Every scene mutation carries its round context. The backend rejects stale commands instead of interpreting a private contribution as a public edit. Command receipts let clients retry a command without applying it twice. Readiness updates do not replace the scene; this preserves edits still waiting for acknowledgement.
 
-An acknowledgement confirms persistence. Controls additionally wait for their resulting round event or snapshot. Duplicate controls receive an acknowledgement followed by an authorized snapshot, so a retry can always complete without reapplying the mutation. Duplicate patches keep their existing acknowledgement behavior.
+Page selection is shared by all connected viewers and increments the epoch when it changes. Page creation can copy current public content, optionally including published poker drawings. `PageCopy` assigns fresh element, group, and image IDs and remaps relationships between copied objects. Templates copy shared content across all pages into a new independent canvas.
 
-Page selection is shared by all connected viewers and increments the epoch when it changes. Page creation can copy current public content, optionally including published poker drawings. `PageCopy` assigns fresh element, group, and image IDs and remaps relationships between copied objects. References to omitted objects are cleared. Templates retain their existing independent-canvas copy behavior.
+Realtime commands and HTTP operations that notify peers acquire the in-memory board stripe before entering database transactions. Within a command transaction, the board row is locked before active membership/session rows are checked. Services pass the same connection to scene persistence; repository methods do not start nested transactions. Ordered notifications are enqueued only after the mutation commits, while the board stripe is still held.
 
-Realtime commands and HTTP operations that notify peers acquire the in-memory board stripe before entering database transactions. Within a command transaction, the board row is locked before active membership/session rows are checked. Services pass the same connection to scene persistence; repository methods do not start nested transactions. Ordered notifications are enqueued only after the mutation commits, while the board stripe is still held. Preserve this ordering when adding a new command or HTTP notification.
-
-A round stores its participant roster and readiness in PostgreSQL. The server publishes contributions in one transaction only after every roster member is ready. Private elements and image downloads are authorized on the server. Cancelling a round deletes its private data. Deleted private elements and unused private images are removed before publication.
+Poker has no participant roster or readiness. Any active member starts or stops it. Private rows refer to round-scoped capability hashes, never participant identities. Clients authorize a capability after the initial snapshot; each image request requires both membership and that capability. Reveal is a single transaction that publishes saved live content and removes private associations. Late private writes fail stale context and remain recoverable locally.
 
 The backend assumes a single active instance. PostgreSQL row locks serialize board commands, and a dedicated PostgreSQL session holds an advisory lock to reject a second backend. Direct connections or session pooling are required; transaction-mode PgBouncer is unsupported. Restart the backend after losing the ownership connection.
 
@@ -62,17 +57,15 @@ Mutating commands contain a UUID `commandId`, the board `epoch`, a UUID `roundId
 | Command | Behavior |
 | --- | --- |
 | `patch` with `elements` and `files` | Up to 100 elements and one new image; the server decides ownership and visibility |
-| `start_round` | Host only; stores the roster and increments the epoch |
-| `done` with `draftRevision` | Locks the acknowledged draft and publishes if all members are ready |
-| `cancel_round` | Host only; deletes private contributions and ends the round |
+| `start_round` | Any member starts private contributions and increments the epoch |
+| `stop_round` | Any member publishes all saved private contributions |
+| `draft` with round ID and capability | Authorizes this tab to recover its private draft |
 | `create_page` with `copyCurrent` and `includePoker` | Creates and selects a page; unavailable during poker |
 | `select_page` with `targetPageId` | Selects an existing page for all viewers; unavailable during poker |
 | `resync` | Sends an authorized snapshot, limited to once every two seconds |
 | `cursor` / `ping` | Sends transient position in standard mode or checks the connection |
 
 Server events are `snapshot`, `patch`, `ack`, `round`, `metadata`, `presence`, `cursor`, `pong`, and `error`. The shared types live in [`protocol.ts`](../frontend/src/protocol.ts); [`protocolCodec.ts`](../frontend/src/protocolCodec.ts) validates incoming events.
-
-The fixtures in `tests/fixtures/protocol.json` cover every event type and both standard and poker snapshots. Kotlin tests compare actual serialized events with these fixtures; frontend tests pass them through the production decoder. Browser transport fixtures reuse the same snapshot factory. Update both checks whenever the protocol changes.
 
 Snapshots include image IDs, not image bytes. Assets are fetched individually through `GET /api/boards/{id}/assets/{assetId}` using `X-Board-Token` and the OIDC session. Asset responses use `Cache-Control: private, no-store`.
 

@@ -1,3 +1,4 @@
+import { draftCapability } from "./draftCapability";
 import type { BinaryFile } from "./protocol";
 export interface Identity {
   id: string;
@@ -6,6 +7,8 @@ export interface Identity {
   token: string;
 }
 export interface Account {
+  limits?: { maxPagesPerCanvas: number; maxOwnedCanvasesPerUser: number };
+  admin?: boolean;
   id: string;
   displayName: string;
 }
@@ -74,7 +77,7 @@ export const setCanvasTags = (id: string, tags: string[]) =>
   request<void>(`/api/boards/${id}/tags`, { tags }, "PUT");
 export const getTagSuggestions = () => request<string[]>("/api/boards/tags/suggestions");
 export const createInvitation = (id: string) =>
-  request<{ inviteKey: string }>(`/api/boards/${id}/invitations`, {});
+  request<{ inviteKey: string; expiresAt: string }>(`/api/boards/${id}/invitations`, {});
 export const previewInvitation = (id: string, inviteKey: string, signal?: AbortSignal) =>
   request<{ name: string; ownerName: string }>(
     `/api/boards/${id}/invitations/preview`,
@@ -88,10 +91,11 @@ export async function fetchAsset(
   boardId: string,
   assetId: string,
   token: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  roundId?: string | null
 ): Promise<BinaryFile> {
   const response = await fetch(`/api/boards/${boardId}/assets/${encodeURIComponent(assetId)}`, {
-    headers: { "X-Board-Token": token, "X-Requested-With": "JavaScript" },
+    headers: { "X-Board-Token": token, "X-Requested-With": "JavaScript", ...(roundId ? { "X-Draft-Capability": draftCapability(boardId, roundId) } : {}) },
     signal,
   });
   if (!response.ok)

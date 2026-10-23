@@ -65,9 +65,8 @@ test('page copies preserve sticky bindings and synchronize selection, blank page
     await expect(b.getByRole('button', { name: 'New page', exact: true })).toBeDisabled();
     await expect(b.getByLabel('Canvas page', { exact: true })).toBeDisabled();
     await b.getByRole('button', { name: 'Sticky note' }).click();
-    await b.getByRole('button', { name: 'Ready', exact: false }).click();
-    await expect(b.getByText('Your contribution is locked')).toBeVisible();
-    await a.getByRole('button', { name: 'Ready', exact: false }).click();
+    b.once('dialog', dialog => dialog.accept());
+    await b.getByRole('button', { name: 'Stop poker and reveal', exact: true }).click();
     await expect(a.getByRole('button', { name: 'Start poker' })).toBeEnabled();
     await createPage(a);
     await expect.poll(() => aStates.at(-1)?.pages.length).toBe(4);

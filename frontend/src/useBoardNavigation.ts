@@ -4,8 +4,7 @@ import type { SessionView } from "./syncSession";
 import { downloadDraft as exportDraft } from "./draftExport";
 
 export function useBoardNavigation(view: SessionView, deleted: boolean, recoveryExported: () => void) {
-  const round = view.snapshot?.round;
-  const unfinished = !deleted && !!round?.included && !round.done;
+  const unfinished = false;
   const waiting = !deleted && view.busy;
   const blocker = useBlocker(view.unsaved || waiting || view.recovery.length > 0 || unfinished);
   useEffect(() => {

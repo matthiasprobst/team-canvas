@@ -14,7 +14,6 @@ const snapshot = (poker = false) => {
   state.participantId = 'me';
   if (poker) {
     state.round.id = 'round';
-    state.round.members = [{ id: 'me', name: 'Me', done: false }, { id: 'other', name: 'Other', done: false }];
   }
   return state;
 };
@@ -30,24 +29,22 @@ function accepted(session, command, revision, scope = 'public', actorId = 'me') 
   session.receive({ type: 'ack', commandId: command.commandId, revision });
 }
 
-test('ready waits for every pending edit to be acknowledged', () => {
+test('stop waits for this browser pending edits to be acknowledged', () => {
   const { session, sent } = client(true);
   session.localChange([box('public'), box('private', 42)], {});
-  session.control('done');
+  session.control('stop_round');
   assert.equal(sent.length, 1);
   assert.equal(sent[0].type, 'patch');
   accepted(session, sent[0], 4, 'private');
   assert.equal(sent.length, 2);
-  assert.equal(sent[1].type, 'done');
-  assert.equal(sent[1].draftRevision, 4);
+  assert.equal(sent[1].type, 'stop_round');
   assert.equal(sent[1].roundId, 'round');
 });
 
-test('another participant becoming ready preserves the local draft', () => {
+test('round metadata preserves the local draft', () => {
   const { session } = client(true);
   session.localChange([box('public'), box('private', 42)], {});
   const state = snapshot(true);
-  state.round.members[1].done = true;
   state.board.revision = 1;
   session.receive({ type: 'round', board: state.board, round: state.round });
   assert.equal(session.view().elements.find(el => el.id === 'private').x, 42);
@@ -193,7 +190,7 @@ test('renaming during poker preserves unacknowledged edits and frozen readiness'
   assert.equal(session.view().snapshot.board.name, 'Renamed');
   assert.equal(session.view().elements.find(element => element.id === 'private').x, 17);
   assert.equal(session.view().unsaved, true);
-  assert.equal(session.view().snapshot.round.members.length, 2);
+  assert.equal(session.view().snapshot.round.id, "round");
   accepted(session, sent[0], 1, 'private');
   assert.equal(session.view().unsaved, false);
 });
@@ -247,7 +244,7 @@ test('page actions are blocked during poker and retrying a completed transition 
   session.createPage(true, true);
   session.selectPage('other-page');
   assert.equal(sent.length, 0);
-  session.control('cancel_round');
+  session.control('stop_round');
   const command = sent[0];
   session.disconnected();
   const state = snapshot();

@@ -25,24 +25,24 @@ class SceneRepository @Inject constructor(private val json: ObjectMapper) {
             }
         }
 
-    data class Ownership(val pageId: UUID, val scope: String, val authorId: UUID?, val roundId: UUID?)
+    data class Ownership(val pageId: UUID, val scope: String, val draftHash: String?, val roundId: UUID?)
 
     fun ownership(connection: Connection, boardId: UUID, id: String): Ownership? =
         connection.query(
-            "SELECT page_id,scope,author_id,round_id FROM elements WHERE board_id=? AND id=?",
+            "SELECT page_id,scope,draft_hash,round_id FROM elements WHERE board_id=? AND id=?",
             boardId, id,
         ) { rows ->
             if (!rows.next()) null else Ownership(
                 rows.getObject(1, UUID::class.java), rows.getString(2),
-                rows.getObject(3, UUID::class.java), rows.getObject(4, UUID::class.java),
+                rows.getString(3), rows.getObject(4, UUID::class.java),
             )
         }
 
     fun accessibleAsset(connection: Connection, who: Participant, id: String, roundId: UUID?, pageId: UUID): Boolean =
         connection.query(
             """SELECT 1 FROM assets WHERE board_id=? AND page_id=? AND id=? AND
-            (scope='public' OR (scope='private' AND author_id=? AND round_id=?))""",
-            who.boardId, pageId, id, who.id, roundId,
+            (scope='public' OR (scope='private' AND draft_hash=? AND round_id=?))""",
+            who.boardId, pageId, id, DraftCapabilities.hash(who, roundId), roundId,
         ) { it.next() }
 
     fun asset(connection: Connection, boardId: UUID, pageId: UUID, id: String): JsonNode? =
@@ -56,21 +56,14 @@ class SceneRepository @Inject constructor(private val json: ObjectMapper) {
     fun visibleElements(connection: Connection, who: Participant, state: BoardState): List<StoredElement> =
         connection.query(
             """SELECT id,body,scope,poker_created FROM elements WHERE board_id=? AND page_id=? AND
-            (scope='public' OR (scope='private' AND author_id=? AND round_id=?))
+            (scope='public' OR (scope='private' AND draft_hash=? AND round_id=?))
             ORDER BY body->>'index' COLLATE "C" NULLS LAST,id""",
-            who.boardId, state.pageId, who.id, state.roundId,
+            who.boardId, state.pageId, DraftCapabilities.hash(who, state.roundId), state.roundId,
         ) { rows -> buildList {
             while (rows.next()) add(StoredElement(
                 rows.getString(1), json.readTree(rows.getString(2)), rows.getString(3), rows.getBoolean(4),
             ))
         } }
-
-    fun updateDraftRevision(connection: Connection, who: Participant, roundId: UUID?, revision: Long) {
-        connection.update(
-            "UPDATE round_participants SET draft_revision=? WHERE round_id=? AND participant_id=?",
-            revision, roundId, who.id,
-        )
-    }
 
     fun save(
         connection: Connection,
@@ -84,7 +77,7 @@ class SceneRepository @Inject constructor(private val json: ObjectMapper) {
     ) {
         connection
             .prepareStatement(
-            """INSERT INTO $table(board_id,id,body,scope,author_id,round_id,stored_bytes,page_id) VALUES(?,?,?::jsonb,?,?,?,?,?)
+            """INSERT INTO $table(board_id,id,body,scope,draft_hash,round_id,stored_bytes,page_id) VALUES(?,?,?::jsonb,?,?,?,?,?)
             ON CONFLICT(board_id,id) DO UPDATE SET body=EXCLUDED.body,stored_bytes=EXCLUDED.stored_bytes"""
             )
             .use {
@@ -92,7 +85,7 @@ class SceneRepository @Inject constructor(private val json: ObjectMapper) {
                 it.setString(2, id)
                 it.setString(3, body.toString())
                 it.setString(4, scope)
-                it.setObject(5, who.id)
+                it.setString(5, if (scope == "private") DraftCapabilities.hash(who, roundId) else null)
                 it.setObject(6, roundId)
                 it.setLong(7, body.toString().toByteArray(Charsets.UTF_8).size.toLong())
                 it.setObject(8, pageId)
@@ -101,7 +94,7 @@ class SceneRepository @Inject constructor(private val json: ObjectMapper) {
     }
     fun publicPageElements(connection: Connection, boardId: UUID, pageId: UUID): List<StoredElement> =
         connection.query(
-            "SELECT id,body,poker_created FROM elements WHERE board_id=? AND page_id=? AND scope='public' ORDER BY id",
+            "SELECT id,body,poker_created FROM elements WHERE board_id=? AND page_id=? AND scope='public' AND NOT COALESCE((body->>'isDeleted')::boolean,false) ORDER BY id",
             boardId, pageId,
         ) { rows -> buildList {
             while (rows.next()) add(StoredElement(rows.getString(1), json.readTree(rows.getString(2)), "public", rows.getBoolean(3)))
@@ -133,15 +126,14 @@ class SceneRepository @Inject constructor(private val json: ObjectMapper) {
         val pokerColumn = if (table == SceneTable.ELEMENTS) ",poker_created" else ""
         val pokerValue = if (table == SceneTable.ELEMENTS) ",?" else ""
         connection.prepareStatement(
-            "INSERT INTO $table(board_id,id,body,scope,author_id,round_id,stored_bytes,page_id$pokerColumn) VALUES(?,?,?::jsonb,'public',?,NULL,?,?$pokerValue)",
+            "INSERT INTO $table(board_id,id,body,scope,stored_bytes,page_id$pokerColumn) VALUES(?,?,?::jsonb,'public',?,?$pokerValue)",
         ).use {
             it.setObject(1, who.boardId)
             it.setString(2, id)
             it.setString(3, body.toString())
-            it.setObject(4, who.id)
-            it.setLong(5, body.toString().toByteArray(Charsets.UTF_8).size.toLong())
-            it.setObject(6, pageId)
-            if (table == SceneTable.ELEMENTS) it.setBoolean(7, pokerCreated)
+            it.setLong(4, body.toString().toByteArray(Charsets.UTF_8).size.toLong())
+            it.setObject(5, pageId)
+            if (table == SceneTable.ELEMENTS) it.setBoolean(6, pokerCreated)
             it.executeUpdate()
         }
     }

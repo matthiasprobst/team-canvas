@@ -39,6 +39,7 @@ data class Participant(
     val role: String,
     val subject: String?,
     val sessionHash: String = "",
+    val draftKey: String? = null,
 )
 
 data class BoardState(
@@ -54,15 +55,7 @@ data class BoardState(
 data class CanvasSheet(val id: UUID, val position: Int)
 data class StoredElement(val id: String, val body: JsonNode, val scope: String, val pokerCreated: Boolean)
 
-data class RoundMember(val id: UUID, val name: String, val done: Boolean)
-
-data class RoundState(
-    val id: UUID,
-    val done: Boolean,
-    val included: Boolean,
-    val draftRevision: Long,
-    val members: List<RoundMember>,
-)
+data class RoundState(val id: UUID)
 
 data class SceneSnapshot(
     val board: BoardState,
@@ -100,11 +93,4 @@ object RoundRules {
             )
     }
 
-    fun allReady(members: List<RoundMember>): Boolean =
-        members.isNotEmpty() && members.all { it.done }
-
-    fun requireHost(who: Participant) {
-        if (who.role != "host")
-            throw ClientException("forbidden", "Only the owner can manage rounds.")
-    }
 }

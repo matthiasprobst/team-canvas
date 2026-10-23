@@ -1,3 +1,4 @@
+import { draftCapability, forgetDraftCapability } from "./draftCapability";
 import { checkCompanySession, type Identity } from "./api";
 import { parseServerEvent } from "./protocolCodec";
 import type { ServerEvent } from "./protocol";
@@ -44,9 +45,10 @@ export class BoardTransport {
       const protocol = location.protocol === "https:" ? "wss:" : "ws:";
       const socket = new WebSocket(`${protocol}//${location.host}/ws/boards/${boardId}`);
       let rejectionMessage: string | undefined;
+      let draftRound: string | null = null;
       this.socket = socket;
       socket.addEventListener("open", () =>
-        socket.send(JSON.stringify({ type: "hello", token: identity.token }))
+        socket.send(JSON.stringify({ type: "hello", token: identity.token, protocolVersion: 2 }))
       );
       socket.addEventListener("message", (event) => {
         if (stopped || canvasDeleted || this.socket !== socket) return;
@@ -60,7 +62,24 @@ export class BoardTransport {
         }
         if (packet.type === "error" && !packet.commandId) rejectionMessage = packet.message;
         if (packet.type === "error" && packet.code === "canvas_deleted") canvasDeleted = true;
-        if (packet.type === "snapshot") failures = 0;
+        if (packet.type === "snapshot") {
+          failures = 0;
+          const roundId = packet.data.board.roundId;
+          if (packet.data.board.mode === "poker" && roundId && draftRound !== roundId) {
+            draftRound = roundId;
+            try {
+              socket.send(JSON.stringify({ type: "draft", roundId, capability: draftCapability(boardId, roundId) }));
+            } catch {
+              callbacks.disconnected("Private draft recovery requires available tab storage. Export local work before reloading.");
+              socket.close(1008);
+            }
+            return;
+          }
+          if (!roundId && draftRound) {
+            forgetDraftCapability(boardId, draftRound);
+            draftRound = null;
+          }
+        }
         callbacks.receive(packet);
       });
       socket.addEventListener("close", (event) => {
@@ -73,6 +92,8 @@ export class BoardTransport {
         );
         if (!canvasDeleted && (event.code === 1008 || event.code === 1006))
           void checkCompanySession().catch(() => {});
+        if (!canvasDeleted && event.code === 1008 && event.reason === "Login expired")
+          void checkCompanySession().then(() => { if (!stopped) retry = setTimeout(connect, 300); }).catch(() => {});
         if (!canvasDeleted && event.code !== 1008)
           retry = setTimeout(connect, Math.min(15_000, 1000 * 2 ** failures++) + Math.random() * 400);
       });

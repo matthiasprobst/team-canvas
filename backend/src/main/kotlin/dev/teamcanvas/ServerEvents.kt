@@ -8,7 +8,7 @@ sealed interface ServerEvent
 
 data class SnapshotEvent(val data: SceneSnapshot, val type: String = "snapshot") : ServerEvent
 data class PatchEvent(
-    val commandId: UUID, val revision: Long, val actorId: UUID, val scope: String,
+    val commandId: UUID, val revision: Long, val scope: String,
     val elements: List<JsonNode>, val fileIds: List<String>, val type: String = "patch",
 ) : ServerEvent
 data class RoundEvent(val board: BoardState, val round: RoundState?, val type: String = "round") : ServerEvent

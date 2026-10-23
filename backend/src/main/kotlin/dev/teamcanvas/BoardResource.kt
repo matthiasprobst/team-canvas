@@ -94,9 +94,10 @@ constructor(
         @PathParam("id") raw: String,
         @PathParam("assetId") assetId: String,
         @HeaderParam("X-Board-Token") token: String?,
+        @HeaderParam("X-Draft-Capability") capability: String?,
     ): Response {
         val who = access.authenticate(boardId(raw), token ?: "", identity())
-        return Response.ok(store.asset(who, assetId))
+        return Response.ok(store.asset(who.copy(draftKey = capability), assetId))
             .header("Cache-Control", "private, no-store")
             .build()
     }
@@ -144,7 +145,7 @@ class SessionResource @Inject constructor(private val accounts: Accounts) {
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     fun me(@Context security: SecurityContext): Account =
-        accounts.current(loginIdentity(security.userPrincipal))
+        accounts.current(loginIdentity(security.userPrincipal)).copy(admin = security.isUserInRole("team-canvas-admin"))
 }
 
 @Path("/api/logout")
@@ -165,6 +166,7 @@ class ClientErrorMapper : jakarta.ws.rs.ext.ExceptionMapper<ClientException> {
         Response.status(
                 when (error.code) {
                     "not_found" -> 404
+                    "conflict" -> 409
                     "unauthorized" -> 401
                     "forbidden",
                     "locked" -> 403

@@ -88,8 +88,7 @@ export class SyncSession {
       !snapshot ||
       !this.online ||
       this.action ||
-      this.awaitingState ||
-      (snapshot.board.mode === "poker" && (!snapshot.round?.included || snapshot.round.done))
+      this.awaitingState
     )
       return;
     let changed = Object.keys(files).some((id) => !this.files[id]);
@@ -164,9 +163,7 @@ export class SyncSession {
       this.dispatch({ ...this.context(), type: "patch", elements, files });
     } else if (this.action) {
       const context = this.context();
-      if (this.action.type === "done")
-        this.dispatch({ ...context, type: "done", draftRevision: this.snapshot.round?.draftRevision ?? 0 });
-      else this.dispatch({ ...context, ...this.action });
+      this.dispatch({ ...context, ...this.action });
     }
   }
 
@@ -184,7 +181,7 @@ export class SyncSession {
 
   private queueAction(action: QueuedAction) {
     if (!this.online || !this.snapshot || this.action || this.awaitingState) return;
-    if (this.snapshot.board.mode === "poker" && action.type !== "done" && action.type !== "cancel_round")
+    if (this.snapshot.board.mode === "poker" && action.type !== "stop_round")
       return;
     this.action = action;
     this.flush();
@@ -233,14 +230,6 @@ export class SyncSession {
         this.knownFiles = new Set(event.data.fileIds);
         this.online = true;
         this.awaitingState = false;
-        if (
-          this.flight?.command.type !== "patch" &&
-          event.data.round?.done &&
-          this.flight?.command.type === "done"
-        ) {
-          this.flight = null;
-          this.action = null;
-        }
         if (this.flight) {
           this.flight.dispatchedAt = this.clock();
           this.send(this.flight.command);
@@ -255,8 +244,6 @@ export class SyncSession {
           this.snapshot.publicIds = [
             ...new Set([...this.snapshot.publicIds, ...event.elements.map((el) => el.id)]),
           ];
-        else if (event.actorId === this.snapshot.participantId && this.snapshot.round)
-          this.snapshot.round = { ...this.snapshot.round, draftRevision: event.revision };
         event.fileIds.forEach((id) => this.knownFiles.add(id));
         if (this.flight?.command.commandId === event.commandId) this.flight.accepted = true;
         break;

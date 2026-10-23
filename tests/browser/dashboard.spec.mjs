@@ -34,15 +34,12 @@ test('two users create, share, rename, switch, complete poker and sign out', asy
     await b.getByRole('button', { name: 'Sticky note' }).click();
     await expect(b.getByText('Saved', { exact: true })).toBeVisible();
     await b.getByRole('link', { name: 'Canvases', exact: false }).click();
-    await expect(b.getByRole('dialog', { name: 'Leave this canvas?' })).toBeVisible();
-    await b.getByRole('button', { name: 'Leave canvas', exact: true }).click();
     await b.getByRole('link', { name: 'Shared with me', exact: true }).click();
     await b.getByRole('link', { name: title, exact: true }).click();
-    await expect(b.getByRole('button', { name: 'Ready', exact: false })).toBeEnabled();
+    await expect(b.getByRole('button', { name: 'Stop poker and reveal', exact: true })).toBeEnabled();
     await expect(a.getByText('Poker round', { exact: false })).toBeVisible();
-    await b.getByRole('button', { name: 'Ready', exact: false }).click();
-    await expect(b.getByText('Your contribution is locked')).toBeVisible();
-    await a.getByRole('button', { name: 'Ready', exact: false }).click();
+    b.once('dialog', dialog => dialog.accept());
+    await b.getByRole('button', { name: 'Stop poker and reveal', exact: true }).click();
     await expect(a.getByRole('button', { name: 'Start poker' })).toBeVisible();
     await a.getByRole('link', { name: 'Canvases', exact: false }).click();
     await a.getByLabel('Search canvases or tags', { exact: true }).fill(title);

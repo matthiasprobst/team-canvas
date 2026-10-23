@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ArrowLeft, Share2, StickyNote } from "lucide-react";
-import { Excalidraw, CaptureUpdateAction, convertToExcalidrawElements } from "@excalidraw/excalidraw";
+import { Excalidraw, MainMenu, CaptureUpdateAction, convertToExcalidrawElements } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import type { Identity } from "./api";
 import { useBoardSession } from "./useBoardSession";
@@ -54,11 +54,10 @@ export default function BoardEditor({ boardId, identity }: { boardId: string; id
     });
   };
 
-  const round = snapshot?.round;
   const poker = snapshot?.board.mode === "poker";
-  const editable = online && !view.busy && (!poker || (!!round?.included && !round.done));
+  const editable = online && !view.busy;
   const isHost = identity.role === "host";
-  const { blocker, downloadDraft, unfinished, waiting } = useBoardNavigation(view, deleted, recoveryExported);
+  const { blocker, downloadDraft, waiting } = useBoardNavigation(view, deleted, recoveryExported);
   return (
     <div className="layout">
       {blocker.state === "blocked" && (
@@ -71,12 +70,6 @@ export default function BoardEditor({ boardId, identity }: { boardId: string; id
             </p>
           )}
           {!!view.recovery.length && <p>A recovered draft has not been exported.</p>}
-          {unfinished && (
-            <p>
-              You are not ready in the current poker round. Leaving keeps you in the round; your team will
-              wait until you return and mark yourself ready.
-            </p>
-          )}
           <div className="flex flex-wrap gap-3 mt-5">
             <button className="button" onClick={() => blocker.reset()}>
               Stay here
@@ -175,7 +168,7 @@ export default function BoardEditor({ boardId, identity }: { boardId: string; id
               <StickyNote size={16} />
               <span>Sticky note</span>
             </button>
-            {isHost && !poker && (
+            {!poker && (
               <button
                 className="primary-action"
                 onClick={() => control("start_round")}
@@ -184,22 +177,11 @@ export default function BoardEditor({ boardId, identity }: { boardId: string; id
                 Start poker
               </button>
             )}
-            {poker && editable && (
-              <button className="primary-action" onClick={() => control("done")}>
-                ✓ <span>Ready</span>
-              </button>
-            )}
-            {poker && round?.done && <span className="locked-status">Your contribution is locked</span>}
-            {poker && isHost && (
-              <button
-                className="nav-button cancel-round"
-                disabled={!online || view.busy}
-                onClick={() => {
-                  if (confirm("Cancel this round and delete all private contributions?"))
-                    control("cancel_round");
-                }}
-              >
-                Cancel round
+            {poker && (
+              <button className="primary-action" disabled={!online || view.busy} onClick={() => {
+                if (confirm("Stop poker and reveal all saved contributions to everyone?")) control("stop_round");
+              }}>
+                Stop poker and reveal
               </button>
             )}
             {view.recovery.length > 0 && (
@@ -228,25 +210,11 @@ export default function BoardEditor({ boardId, identity }: { boardId: string; id
           <span key={person.id} className="pill">
             {person.role === "host" ? "★ " : ""}
             {person.name}
-            {poker ? (round?.members.find((member) => member.id === person.id)?.done ? " ✓" : " …") : ""}
           </span>
         ))}
         {poker && (
-          <span className="mini">
-            Private contributions are visible only to you · automatically revealed when everyone is ready
-            {round
-              ? ` · ${round.members.filter((member) => member.done).length}/${round.members.length} ready`
-              : ""}
-          </span>
+          <span className="mini">Your new contributions are private. Any member can stop poker and reveal all saved work.</span>
         )}
-        {poker &&
-          round?.members
-            .filter((member) => !people.some((person) => person.id === member.id))
-            .map((member) => (
-              <span key={member.id} className="pill">
-                {member.name} · offline{member.done ? " ✓" : " · not ready"}
-              </span>
-            ))}
         {!poker && (
           <span className="mini">
             Edit shapes, text, and images together. Drag and drop images onto the canvas.
@@ -258,10 +226,17 @@ export default function BoardEditor({ boardId, identity }: { boardId: string; id
           excalidrawAPI={setEditor}
           langCode="en"
           isCollaborating
+          UIOptions={{ canvasActions: { loadScene: false, saveToActiveFile: false, export: false } }}
           viewModeEnabled={!editable}
           onChange={(elements, _appState, files) => onChange(elements, files)}
           onPointerUpdate={({ pointer: position }) => pointer(position.x, position.y)}
-        />
+        >
+          <MainMenu>
+            <MainMenu.DefaultItems.SaveAsImage />
+            <MainMenu.DefaultItems.ClearCanvas />
+            <MainMenu.DefaultItems.ToggleTheme />
+          </MainMenu>
+        </Excalidraw>
       </main>
     </div>
   );

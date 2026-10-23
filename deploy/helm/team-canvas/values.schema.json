@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": [
+    "existingSecret",
+    "migrationSecret",
+    "host",
+    "tlsSecret",
+    "ingressClassName",
+    "trustedProxies",
+    "databaseCIDR",
+    "identityCIDR",
+    "images",
+    "limits"
+  ],
+  "properties": {
+    "existingSecret": {
+      "type": "string",
+      "minLength": 1
+    },
+    "migrationSecret": {
+      "type": "string",
+      "minLength": 1
+    },
+    "host": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9.-]+$"
+    },
+    "tlsSecret": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ingressClassName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trustedProxies": {
+      "type": "string",
+      "minLength": 1
+    },
+    "databaseCIDR": {
+      "type": "string",
+      "minLength": 1
+    },
+    "identityCIDR": {
+      "type": "string",
+      "minLength": 1
+    },
+    "images": {
+      "type": "object",
+      "required": [
+        "backend",
+        "frontend"
+      ],
+      "properties": {
+        "backend": {
+          "type": "string",
+          "pattern": "^.+@sha256:[a-f0-9]{64}$"
+        },
+        "frontend": {
+          "type": "string",
+          "pattern": "^.+@sha256:[a-f0-9]{64}$"
+        }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "required": [
+        "maxPagesPerCanvas",
+        "maxOwnedCanvasesPerUser"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "maxPagesPerCanvas": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "maxOwnedCanvasesPerUser": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        }
+      }
+    }
+  }
+}

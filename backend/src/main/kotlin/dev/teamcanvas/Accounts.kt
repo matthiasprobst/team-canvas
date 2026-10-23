@@ -9,7 +9,7 @@ import org.eclipse.microprofile.jwt.JsonWebToken
 
 data class LoginIdentity(val issuer: String, val subject: String, val sid: String, val name: String)
 
-data class Account(val id: UUID, val displayName: String)
+data class Account(val id: UUID, val displayName: String, val limits: LimitSettings = LimitSettings(10, 20), val admin: Boolean = false)
 
 /** Accept identities only from the JWT principal validated by Quarkus OIDC. */
 fun loginIdentity(principal: Principal?): LoginIdentity {
@@ -36,20 +36,23 @@ fun loginIdentity(principal: Principal?): LoginIdentity {
 }
 
 @ApplicationScoped
-class Accounts @Inject constructor(private val repository: BoardRepository) {
+class Accounts @Inject constructor(private val repository: BoardRepository, private val blocks: IdentityBlocks = IdentityBlocks()) {
     fun current(identity: LoginIdentity): Account =
         repository.transaction { connection ->
+            blocks.lock(connection, identity.issuer, identity.subject)
+            blocks.requireAllowed(connection, identity.issuer, identity.subject)
             val account =
                 connection.query(
                     """INSERT INTO app_users(id,issuer,subject,display_name) VALUES(?,?,?,?)
             ON CONFLICT(issuer,subject) DO UPDATE SET display_name=EXCLUDED.display_name,last_login_at=now()
+            WHERE app_users.status='active'
             RETURNING id,display_name""",
                     UUID.randomUUID(),
                     identity.issuer,
                     identity.subject,
                     identity.name,
                 ) { rows ->
-                    rows.next()
+                    if (!rows.next()) throw ClientException("unauthorized", "This account is deactivated.")
                     Account(rows.getObject(1, UUID::class.java), rows.getString(2))
                 }
             connection.update(
@@ -58,13 +61,13 @@ class Accounts @Inject constructor(private val repository: BoardRepository) {
                 identity.sid,
             )
             requireLogin(connection, account.id, identity.sid)
-            account
+            account.copy(limits = repository.limits.settings())
         }
 
     fun requireLogin(connection: Connection, userId: UUID, sid: String) {
         val active =
             connection.query(
-                "SELECT 1 FROM login_sessions WHERE user_id=? AND sid=? AND revoked=false FOR SHARE",
+                "SELECT 1 FROM login_sessions l JOIN app_users u ON u.id=l.user_id WHERE l.user_id=? AND l.sid=? AND NOT l.revoked AND u.status='active' FOR SHARE OF l,u",
                 userId,
                 sid,
             ) {

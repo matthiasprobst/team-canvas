@@ -2,7 +2,7 @@
 import { chromium } from "../frontend/node_modules/playwright/index.mjs";
 import { base, login } from "./browser/helpers.mjs";
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomBytes } from 'node:crypto';
 
 const browser = await chromium.launch(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : {});
 const alice = await browser.newContext();
@@ -18,7 +18,7 @@ async function request(path, payload, expected = 200, context = alice) {
 class Client {
   constructor(id, token, page = aPage) {
     this.events = []; this.waiters = []; this.state = null;
-    this.page = page; this.key = randomUUID();
+    this.page = page; this.key = randomUUID(); this.capability = randomBytes(32).toString("base64url");
     this.closed = new Promise(resolve => { this.resolveClosed = resolve; });
     page.once('websocket', socket => {
       socket.on('close', () => this.resolveClosed());
@@ -29,7 +29,6 @@ class Client {
       if (packet.type === 'round' && this.state) Object.assign(this.state, { board: packet.board, round: packet.round });
       if (packet.type === 'patch' && this.state) {
         this.state.board.revision = packet.revision;
-        if (packet.scope === 'private' && packet.actorId === this.state.participantId) this.state.round.draftRevision = packet.revision;
       }
       const waiter = this.waiters.find(item => item.predicate(packet));
       if (waiter) { this.waiters.splice(this.waiters.indexOf(waiter), 1); clearTimeout(waiter.timer); waiter.resolve(packet); }
@@ -40,7 +39,7 @@ class Client {
       window.smokeSockets ??= {};
       const url = new URL(`/ws/boards/${id}`, location.href); url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       const socket = new WebSocket(url); window.smokeSockets[key] = socket;
-      socket.addEventListener('open', () => socket.send(JSON.stringify({ type: 'hello', token })));
+      socket.addEventListener('open', () => socket.send(JSON.stringify({ type: 'hello', token, protocolVersion: 2 })));
     }, { id, token, key: this.key });
   }
   async send(packet) { await this.ready; await this.page.evaluate(({ key, packet }) => window.smokeSockets[key].send(JSON.stringify(packet)), { key: this.key, packet }); }
@@ -61,6 +60,10 @@ class Client {
   }
   ack(command) { return this.next(packet => packet.type === 'ack' && packet.commandId === command.commandId); }
   error(command, code) { return this.next(packet => packet.type === 'error' && packet.commandId === command.commandId && packet.code === code); }
+  async draft() {
+    await this.send({ type: 'draft', roundId: this.state.board.roundId, capability: this.capability });
+    await this.next(packet => packet.type === 'snapshot');
+  }
   async close() {
     await this.ready;
     await this.page.evaluate(key => { const socket = window.smokeSockets[key]; if (socket.readyState !== WebSocket.CLOSED) socket.close(); }, this.key);
@@ -73,7 +76,7 @@ const connect = async (board, who, page = aPage) => {
   const client = new Client(board.id, who.token, page); clients.push(client);
   await client.next(packet => packet.type === 'snapshot'); return client;
 };
-const asset = (board, id, token, context = alice) => context.request.get(`${base}/api/boards/${board.id}/assets/${id}`, { headers: { "X-Board-Token": token, "X-Requested-With": "JavaScript" } });
+const asset = (board, id, token, context = alice, capability = null) => context.request.get(`${base}/api/boards/${board.id}/assets/${id}`, { headers: { "X-Board-Token": token, "X-Requested-With": "JavaScript", ...(capability ? { "X-Draft-Capability": capability } : {}) } });
 try {
   await login(aPage, "alice"); await login(bPage, "bob");
   const board = await request('/api/boards', { name: 'Protocol regression' });
@@ -100,6 +103,7 @@ try {
   const start = a.command('start_round'); await a.ack(start);
   await Promise.all([a.next(packet => packet.type === 'snapshot' && packet.data.board.epoch === 1),
     b.next(packet => packet.type === 'snapshot' && packet.data.board.epoch === 1)]);
+  await a.draft(); await b.draft();
   const early = a.command('reveal'); await a.error(early, 'invalid_message');
   const badEdit = b.command('patch', { elements: [shape('public', 999)], files: {} }); await b.error(badEdit, 'forbidden');
   const image = { id: 'private-file', mimeType: 'image/png', created: 1,
@@ -107,27 +111,19 @@ try {
   const privatePatch = b.command('patch', { elements: [shape('private'), { ...shape('private-image'), type: 'image', fileId: image.id }], files: { [image.id]: image } });
   const saved = await b.ack(privatePatch);
   assert.equal((await asset(board, image.id, host.token)).status(), 404);
-  assert.equal((await asset(board, image.id, guest.token, bob)).status(), 200);
+  assert.equal((await asset(board, image.id, guest.token, bob, b.capability)).status(), 200);
   assert.equal(a.events.some(packet => packet.type === 'patch' && packet.commandId === privatePatch.commandId), false);
-  const staleReady = b.command('done', { draftRevision: 0 }); await b.error(staleReady, 'unsaved_draft');
-  console.log('✓ Private elements and separately fetched images remain author-only');
-
-  const ready = b.command('done', { draftRevision: saved.revision }); await b.ack(ready);
-  await a.next(packet => packet.type === 'round' && packet.round.members.some(member => member.id === guest.participantId && member.done));
-  assert.equal(a.state.board.mode, 'poker');
-  const locked = b.command('patch', { elements: [shape('blocked')], files: {} }); await b.error(locked, 'locked');
-  // Disconnecting does not silently remove an unready participant from the persisted roster.
+  console.log('✓ Private elements and images require an unlinked capability');
   await a.close();
-  const rejoined = await connect(board, host);
-  assert.equal(rejoined.state.round.members.length, 2);
-  const last = rejoined.command('done', { draftRevision: rejoined.state.round.draftRevision }); await rejoined.ack(last);
+  const stop = b.command('stop_round'); await b.ack(stop);
   const revealed = await b.next(packet => packet.type === 'snapshot' && packet.data.board.epoch === 2);
   assert.equal(revealed.data.elements.some(element => element.id === 'private'), true);
   assert.equal((await asset(board, image.id, host.token)).status(), 200);
   assert.equal('files' in revealed.data, false);
-  // Check stale context with a correlated command instead of consuming an arbitrary snapshot.
   const stale = { ...privatePatch, commandId: randomUUID() }; b.send(stale); await b.error(stale, 'stale_round');
-  console.log('✓ Automatic reveal requires all ready; stale round commands are rejected');
+  const rejoined = await connect(board, host);
+  assert.equal(rejoined.state.board.mode, 'standard');
+  console.log('✓ A member reveals saved work after the owner leaves; stale private writes are rejected');
 
   const originalPage = b.state.board.pageId;
   const copy = b.command('create_page', { copyCurrent: true, includePoker: true });

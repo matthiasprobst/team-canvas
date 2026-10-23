@@ -27,7 +27,6 @@ class SocketCommandCodecTest {
         assertFalse(page.includePoker)
         assertEquals(1, page.context.epoch)
         assertTrue(SocketCommandCodec.mutation(packet(""""type":"start_round"""")) is StartRoundCommand)
-        assertTrue(SocketCommandCodec.mutation(packet(""""type":"cancel_round"""")) is CancelRoundCommand)
-        assertEquals(4, (SocketCommandCodec.mutation(packet(""""type":"done","draftRevision":4""")) as ReadyCommand).draftRevision)
+        assertTrue(SocketCommandCodec.mutation(packet(""""type":"stop_round"""")) is StopRoundCommand)
     }
 }
