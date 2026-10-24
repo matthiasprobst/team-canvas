@@ -3,14 +3,15 @@ import { Link, useLocation } from "react-router-dom";
 import { ArrowLeft, Share2, StickyNote } from "lucide-react";
 import { Excalidraw, MainMenu, CaptureUpdateAction, convertToExcalidrawElements } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
-import type { Identity } from "./api";
+import type { Account, Identity } from "./api";
+import AccountMenu from "./AccountMenu";
 import { useBoardSession } from "./useBoardSession";
 import CanvasSwitcher from "./CanvasSwitcher";
 import { Modal, ShareDialog } from "./ui";
 import { useBoardNavigation } from "./useBoardNavigation";
 import PageControls from "./PageControls";
 
-export default function BoardEditor({ boardId, identity }: { boardId: string; identity: Identity }) {
+export default function BoardEditor({ boardId, identity, user }: { boardId: string; identity: Identity; user: Account }) {
   const locationState = useLocation().state as { dashboard?: string } | null;
   const dashboard = locationState?.dashboard?.startsWith("/?") ? locationState.dashboard : "/";
   const {
@@ -141,10 +142,8 @@ export default function BoardEditor({ boardId, identity }: { boardId: string; id
             <button className="nav-button switch-canvas" onClick={() => setSwitching(true)}>
               Switch canvas
             </button>
-            <Link className="signout-link" to="/logout">
-              Sign out
-            </Link>
           </div>
+          <AccountMenu user={user} />
         </div>
         <div className="navbar-workspace">
           <PageControls
@@ -164,7 +163,7 @@ export default function BoardEditor({ boardId, identity }: { boardId: string; id
             {snapshot?.pokerCreatedIds.length ? (
               <span className="poker-count">{snapshot.pokerCreatedIds.length} poker drawings</span>
             ) : null}
-            <button className="nav-button tool-button" onClick={sticky} disabled={!editable}>
+            <button className="nav-button tool-button" aria-label="Sticky note" onClick={sticky} disabled={!editable}>
               <StickyNote size={16} />
               <span>Sticky note</span>
             </button>

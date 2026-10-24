@@ -62,6 +62,7 @@ test('two users create, share, rename, switch, complete poker and sign out', asy
     await a.getByLabel('Search canvases or tags', { exact: true }).fill('Switch target');
     await a.getByRole('link', { name: 'Switch target', exact: false }).first().click();
     await expect(a).toHaveURL(base + `/b/${other.id}`);
+    await a.getByRole('button', { name: /^Account:/ }).click();
     await a.getByRole('link', { name: 'Sign out', exact: true }).click();
     await expect(a.getByRole('button', { name: 'Login with SSO', exact: true })).toBeVisible();
     await b.reload();

@@ -19,6 +19,7 @@ test('client admin role controls lifecycle and anonymous retention differs from 
     }
     await login(c, 'carol'); await login(d, 'dave'); await login(b, 'bob');
     expect((await bob.request.get(base + '/api/admin/users', { headers: { 'X-Requested-With': 'JavaScript' } })).status()).toBe(403);
+    await b.getByRole('button', { name: /^Account:/ }).click();
     await expect(b.getByRole('link', { name: 'User administration' })).toHaveCount(0);
     const retained = await api(carol, '/api/boards', { name: `Retained Carol ${Date.now()}` });
     const deleted = await api(dave, '/api/boards', { name: `Deleted Dave ${Date.now()}` });
@@ -26,6 +27,7 @@ test('client admin role controls lifecycle and anonymous retention differs from 
     const deletedInvite = await api(dave, `/api/boards/${deleted.id}/invitations`, {});
     await api(bob, `/api/boards/${retained.id}/join`, { inviteKey: retainedInvite.inviteKey });
     await api(bob, `/api/boards/${deleted.id}/join`, { inviteKey: deletedInvite.inviteKey });
+    await a.getByRole('button', { name: /^Account:/ }).click();
     await a.getByRole('link', { name: 'User administration' }).click();
     await expect(a.getByRole('heading', { name: 'User administration' })).toBeVisible();
     await a.getByRole('button', { name: 'Manage Carol Test', exact: true }).click();

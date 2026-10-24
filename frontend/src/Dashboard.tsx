@@ -9,11 +9,11 @@ import {
   Plus,
   Search,
   Menu,
-  LogOut,
 } from "lucide-react";
 import { signIn, type Account } from "./api";
 import { useCanvasList } from "./useCanvasList";
 import CanvasCard from "./CanvasCard";
+import AccountMenu from "./AccountMenu";
 import DashboardDialogs, { type DashboardDialog } from "./DashboardDialogs";
 
 export default function Dashboard({ user }: { user: Account }) {
@@ -74,15 +74,18 @@ export default function Dashboard({ user }: { user: Account }) {
           : "All canvases";
   return (
     <div className="shell min-h-screen bg-slate-50 text-slate-900">
-      <button
-        className="button dashboard-nav-toggle fixed top-4 left-4 z-20 md:hidden"
-        aria-label="Toggle navigation"
-        aria-expanded={mobile}
-        aria-controls="canvas-navigation"
-        onClick={() => setMobile(!mobile)}
-      >
-        <Menu size={20} />
-      </button>
+      <header className="dashboard-navbar md:ml-60">
+        <button
+          className="button dashboard-nav-toggle md:hidden"
+          aria-label="Toggle navigation"
+          aria-expanded={mobile}
+          aria-controls="canvas-navigation"
+          onClick={() => setMobile(!mobile)}
+        >
+          <Menu size={20} />
+        </button>
+        <AccountMenu user={user} />
+      </header>
       <aside
         id="canvas-navigation"
         onKeyDown={(e) => {
@@ -118,21 +121,8 @@ export default function Dashboard({ user }: { user: Account }) {
             </Link>
           ))}
         </nav>
-        <div className="mt-auto border-t border-slate-200 pt-5">
-          <div className="flex gap-3 items-center">
-            <span className="rounded-full bg-slate-100 w-9 h-9 flex items-center justify-center font-medium">
-              {user.displayName.slice(0, 1).toUpperCase()}
-            </span>
-            <span className="truncate text-sm font-medium">{user.displayName}</span>
-          </div>
-          {user.admin && <Link className="button" to="/admin">User administration</Link>}
-            <Link to="/logout" className="flex items-center gap-2 text-sm text-slate-500 mt-4 no-underline">
-            <LogOut size={16} />
-            Sign out
-          </Link>
-        </div>
       </aside>
-      <main className="md:ml-60 px-6 pt-24 pb-12 md:px-12 md:pt-12 max-w-7xl">
+      <main className="md:ml-60 px-6 pt-8 pb-12 md:px-12 md:pt-12 max-w-7xl">
         <header className="flex flex-wrap items-center justify-between gap-5 mb-9">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight m-0">{title}</h1>

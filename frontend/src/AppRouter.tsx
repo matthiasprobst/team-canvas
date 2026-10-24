@@ -98,6 +98,7 @@ function CanvasRoute() {
   return <Join key={id} id={id} />;
 }
 function Join({ id }: { id: string }) {
+  const user = useOutletContext<Account>();
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [invite] = useState(() => sessionStorage.getItem(`invitation:${id}`));
   const [preview, setPreview] = useState<{ name: string; ownerName: string } | null>(null);
@@ -146,7 +147,7 @@ function Join({ id }: { id: string }) {
           </Notice>
         }
       >
-        <Editor boardId={id} identity={identity} />
+        <Editor boardId={id} identity={identity} user={user} />
       </Suspense>
     );
   return (
