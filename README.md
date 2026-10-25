@@ -2,7 +2,7 @@
 
 A self-hosted collaborative canvas for small company teams running Scrum sessions, feature refinement, architecture discussions, and retrospectives. Draw across multiple pages, save and share canvases, reuse templates, and collect ideas privately in poker rounds before revealing them together.
 
-The core privacy, poker, templates, quotas and administration changes are implemented. See the [checked implementation backlog](.features/company-readiness/README.md) and [validation record](.features/company-readiness/validation.md) for completed work and remaining release gates, including base-image security findings and company-cluster qualification.
+The core privacy, poker, templates, quotas and administration changes are implemented. See the [latest local qualification](docs/local-qualification-2026-10-25.md), [checked implementation backlog](.features/company-readiness/README.md) and [historical validation record](.features/company-readiness/validation.md) for evidence and remaining release gates. The [operator handover](docs/operator-handover.md) lets the receiving company choose and qualify its own hosting platform.
 
 ## Scope and design principles
 
