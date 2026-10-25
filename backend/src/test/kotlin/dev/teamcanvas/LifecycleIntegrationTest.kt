@@ -40,7 +40,68 @@ class LifecycleIntegrationTest {
         store = BoardStore(repository, SceneRepository(json), json)
     }
     @AfterAll fun cleanup() { source.connection.use { it.update("DROP SCHEMA IF EXISTS $schema CASCADE") } }
-    private fun act(actor: UUID, target: UUID, action: String) = service.change(actor, target, action, service.impact(target).token, action.uppercase())
+    private fun act(actor: UUID, target: UUID, action: String) = service.change(actor, target, action, service.impact(target).token, "${action.uppercase()} $target")
+
+
+    @Test fun `same names are distinguished by searchable username and full account id`() {
+        val first = identity("Same Person").copy(username = "person.first")
+        val second = identity("Same Person").copy(username = "person.second")
+        val firstId = accounts.current(first).id
+        val secondId = accounts.current(second).id
+        assertEquals(firstId, service.list(0, "person.first").items.single().id)
+        assertEquals(secondId, service.list(0, secondId.toString()).items.single().id)
+        assertEquals("person.second", service.impact(secondId).user.username)
+        val admin = accounts.current(identity("Administrator")).id
+        error("bad_request") { service.change(admin, secondId, "delete", service.impact(secondId).token, "DELETE $firstId") }
+        error("bad_request") { service.change(admin, secondId, "delete", service.impact(secondId).token, "DELETE") }
+        assertEquals("active", service.impact(secondId).user.status)
+    }
+
+    @Test fun `admin audit persists outcomes and erases account links on anonymization`() {
+        val admin = accounts.current(identity("Auditor")).id
+        val owner = identity("Audit target")
+        val target = accounts.current(owner).id
+        val board = access.create("Must not appear in audit", owner)
+        act(admin, target, "deactivate")
+        act(admin, target, "reactivate")
+        error("bad_request") { service.change(admin, target, "delete", service.impact(target).token, "DELETE") }
+        val events = service.audit().filter { it.targetId == target }
+        assertEquals(setOf("succeeded", "rejected"), events.map { it.result }.toSet())
+        assertTrue(events.all { it.actorId == admin && it.createdAt.isNotBlank() && it.boardId == null })
+        act(admin, target, "anonymize")
+        source.connection.use { c ->
+            assertEquals(0L, c.query("SELECT count(*) FROM admin_audit_events WHERE target_id=? OR actor_id=?", target, target) { it.next(); it.getLong(1) })
+            assertTrue(c.query("SELECT 1 FROM admin_audit_events WHERE action='anonymize' AND result='succeeded' AND actor_id=? AND target_id IS NULL AND board_id IS NULL", admin) { it.next() })
+        }
+        assertNotNull(service.impact(repository.transaction { c -> c.query("SELECT owner_user_id FROM boards WHERE id=?", board.id) { it.next(); it.getObject(1, UUID::class.java) } }))
+        // Actor references are scrubbed too when an administrator later leaves.
+        val successor = accounts.current(identity("Successor")).id
+        act(successor, admin, "anonymize")
+        source.connection.use { c -> assertEquals(0L, c.query("SELECT count(*) FROM admin_audit_events WHERE actor_id=? OR target_id=?", admin, admin) { it.next(); it.getLong(1) }) }
+    }
+
+    @Test fun `admin audit is transactional and retention cleanup is bounded`() {
+        val admin = accounts.current(identity("Retention administrator")).id
+        val target = accounts.current(identity("Retention target")).id
+        assertThrows(IllegalStateException::class.java) {
+            repository.transaction { c ->
+                AdminAudit.record(c, admin, target, "deactivate", "succeeded")
+                throw IllegalStateException("rollback")
+            }
+        }
+        assertFalse(service.audit().any { it.actorId == admin })
+        repository.transaction { c ->
+            c.update("""INSERT INTO admin_audit_events(actor_id,target_id,action,result,created_at)
+                SELECT ?,?,'deactivate','succeeded',now()-interval '91 days' FROM generate_series(1,501)""", admin, target)
+            assertFalse(AdminAudit.list(c).any { it.actorId == admin })
+            assertEquals(500, AdminAudit.cleanup(c))
+            assertEquals(1L, c.query("SELECT count(*) FROM admin_audit_events WHERE actor_id=?", admin) { it.next(); it.getLong(1) })
+            assertEquals(1, AdminAudit.cleanup(c))
+            AdminAudit.record(c, admin, target, "deactivate", "succeeded")
+            assertEquals(0, AdminAudit.cleanup(c))
+        }
+        assertTrue(service.audit().any { it.actorId == admin && it.targetId == target })
+    }
 
     @Test fun `runtime role can create and join canvases without schema privileges`() {
         val role = "runtime_" + UUID.randomUUID().toString().replace("-", "")
@@ -195,9 +256,9 @@ class LifecycleIntegrationTest {
         val id = accounts.current(owner).id
         val preview = service.impact(id)
         access.create("Created after preview", owner)
-        error("conflict") { service.change(admin, id, "delete", preview.token, "DELETE") }
+        error("conflict") { service.change(admin, id, "delete", preview.token, "DELETE $id") }
         error("bad_request") { service.change(admin, id, "delete", service.impact(id).token, "") }
-        error("forbidden") { service.change(id, id, "delete", service.impact(id).token, "DELETE") }
+        error("forbidden") { service.change(id, id, "delete", service.impact(id).token, "DELETE $id") }
         assertEquals("active", service.impact(id).user.status)
     }
 
