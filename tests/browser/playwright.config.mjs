@@ -5,5 +5,5 @@ export default defineConfig({
   use: { baseURL: base, viewport: { width: 1440, height: 1000 },
     trace: 'retain-on-failure', screenshot: 'only-on-failure',
     launchOptions: process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : {} },
-  outputDir: '../../test-results', reporter: 'list',
+  outputDir: process.env.PLAYWRIGHT_OUTPUT_DIR ?? '../../test-results', reporter: 'list',
 });
