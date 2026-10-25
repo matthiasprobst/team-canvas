@@ -19,6 +19,7 @@ constructor(
     private val access: CanvasAccess,
     private val catalog: CanvasCatalog,
     private val hub: RoomHub,
+    private val storage: CanvasStorage,
 ) {
     @Context lateinit var security: SecurityContext
 
@@ -94,9 +95,10 @@ constructor(
         @PathParam("id") raw: String,
         @PathParam("assetId") assetId: String,
         @HeaderParam("X-Board-Token") token: String?,
+        @HeaderParam("X-Draft-Capability") capability: String?,
     ): Response {
         val who = access.authenticate(boardId(raw), token ?: "", identity())
-        return Response.ok(store.asset(who, assetId))
+        return Response.ok(store.asset(who.copy(draftKey = capability), assetId))
             .header("Cache-Control", "private, no-store")
             .build()
     }
@@ -112,6 +114,41 @@ constructor(
         access.preview(boardId(raw), body.inviteKey, identity())
 
     data class RevokeRequest(val revokeMembers: Boolean = false)
+
+    @GET
+    @Path("/{id}/members")
+    fun members(@PathParam("id") raw: String): CanvasMembers = access.members(boardId(raw), identity())
+
+    @GET
+    @Path("/{id}/access-history")
+    fun accessHistory(@PathParam("id") raw: String): List<AccessEvent> = access.history(boardId(raw), identity())
+
+    @GET
+    @Path("/{id}/storage")
+    fun storage(@PathParam("id") raw: String): CanvasStorageUsage = storage.inspect(boardId(raw), identity())
+
+    @POST
+    @Path("/{id}/storage/compact")
+    fun compact(@PathParam("id") raw: String): CanvasStorageUsage {
+        val id = boardId(raw)
+        return hub.refresh(id) { storage.compact(id, identity()) }
+    }
+
+    @PATCH
+    @Path("/{id}/members/{memberId}")
+    fun setMemberAccess(
+        @PathParam("id") raw: String,
+        @PathParam("memberId") memberRaw: String,
+        body: MemberAccessRequest,
+    ): Response {
+        val id = boardId(raw)
+        val memberId = boardId(memberRaw)
+        val revoked = body.revoked ?: throw ClientException("bad_request", "Specify whether access is revoked.")
+        hub.memberAccess(id, memberId, revoked) {
+            access.setMemberAccess(id, memberId, revoked, identity())
+        }
+        return Response.noContent().build()
+    }
 
     @POST
     @Path("/{id}/invitations/revoke")
@@ -144,7 +181,7 @@ class SessionResource @Inject constructor(private val accounts: Accounts) {
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     fun me(@Context security: SecurityContext): Account =
-        accounts.current(loginIdentity(security.userPrincipal))
+        accounts.current(loginIdentity(security.userPrincipal)).copy(admin = security.isUserInRole("team-canvas-admin"))
 }
 
 @Path("/api/logout")
@@ -165,6 +202,7 @@ class ClientErrorMapper : jakarta.ws.rs.ext.ExceptionMapper<ClientException> {
         Response.status(
                 when (error.code) {
                     "not_found" -> 404
+                    "conflict" -> 409
                     "unauthorized" -> 401
                     "forbidden",
                     "locked" -> 403

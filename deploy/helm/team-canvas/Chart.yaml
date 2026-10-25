@@ -1,0 +1,6 @@
+apiVersion: v2
+name: team-canvas
+description: Internal collaborative canvases with external PostgreSQL and Keycloak
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

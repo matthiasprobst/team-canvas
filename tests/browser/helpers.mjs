@@ -12,5 +12,7 @@ export async function login(page, username) {
 export async function api(context, path, data, method = 'POST', expected = 200) {
   const response = await context.request.fetch(base + path, { method, data, headers: { Origin: base, 'X-Requested-With': 'JavaScript' } });
   expect(response.status(), `Unexpected status for ${method} ${path}`).toBe(expected);
-  return response.status() === 204 ? undefined : response.json();
+  if (response.status() === 204) return undefined;
+  const text = await response.text();
+  try { return JSON.parse(text); } catch { return text; }
 }

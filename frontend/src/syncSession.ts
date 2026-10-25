@@ -1,4 +1,12 @@
-import type { BoardCommand, ControlType, ElementData, Files, PageAction, ServerEvent, Snapshot } from "./protocol";
+import type {
+  BoardCommand,
+  ControlType,
+  ElementData,
+  Files,
+  PageAction,
+  ServerEvent,
+  Snapshot,
+} from "./protocol";
 import { elementFingerprint, indexById, mergeById, normalizeElement, restoreLockedPublic } from "./syncCore";
 
 // getRandomValues is also available on development HTTP origins in a private network.
@@ -6,9 +14,14 @@ function commandId(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
+
+const PATCH_BATCH_ELEMENTS = 50;
+const PATCH_BATCH_BYTES = 1_800_000;
+const ACK_TIMEOUT_MS = 15_000;
+const THROTTLE_RETRY_MS = 1200;
 
 type Flight = { command: BoardCommand; accepted: boolean; dispatchedAt: number; retryAfter: number | null };
 type QueuedAction = { type: ControlType } | PageAction;
@@ -41,11 +54,12 @@ export class SyncSession {
     private readonly send: (packet: object) => boolean,
     private readonly changed: (view: SessionView) => void,
     private readonly createId: () => string = commandId,
-    private readonly clock: () => number = () => Date.now(),
+    private readonly clock: () => number = () => Date.now()
   ) {}
 
   view(): SessionView {
-    const overlay = this.flight?.command.type === "patch" && !this.flight.accepted ? this.flight.command.elements : [];
+    const overlay =
+      this.flight?.command.type === "patch" && !this.flight.accepted ? this.flight.command.elements : [];
     return {
       snapshot: this.snapshot,
       elements: mergeById(mergeById(this.canonical, overlay), [...this.pending.values()]),
@@ -58,7 +72,9 @@ export class SyncSession {
     };
   }
 
-  private emit() { this.changed(this.view()); }
+  private emit() {
+    this.changed(this.view());
+  }
 
   disconnected(message = "Connection lost. Changes are kept locally until you reconnect.") {
     this.online = false;
@@ -68,9 +84,14 @@ export class SyncSession {
 
   localChange(elements: readonly ElementData[], files: Files) {
     const snapshot = this.snapshot;
-    if (!snapshot || !this.online || this.action || this.awaitingState ||
-      (snapshot.board.mode === "poker" && (!snapshot.round?.included || snapshot.round.done))) return;
-    let changed = Object.keys(files).some(id => !this.files[id]);
+    if (
+      !snapshot ||
+      !this.online ||
+      this.action ||
+      this.awaitingState
+    )
+      return;
+    let changed = Object.keys(files).some((id) => !this.files[id]);
     this.files = { ...this.files, ...files };
     const current = indexById(this.view().elements);
     let actual = elements.map(normalizeElement);
@@ -93,7 +114,10 @@ export class SyncSession {
       current.delete(element.id);
     }
     for (const [id, element] of current) {
-      if (!element.isDeleted) { this.pending.set(id, { ...element, isDeleted: true }); changed = true; }
+      if (!element.isDeleted) {
+        this.pending.set(id, { ...element, isDeleted: true });
+        changed = true;
+      }
     }
     if (changed) this.emit();
   }
@@ -103,7 +127,7 @@ export class SyncSession {
     if (!this.online || !this.snapshot || this.awaitingState) return;
     if (this.flight) {
       const now = this.clock();
-      if (now >= (this.flight.retryAfter ?? this.flight.dispatchedAt + 15_000)) {
+      if (now >= (this.flight.retryAfter ?? this.flight.dispatchedAt + ACK_TIMEOUT_MS)) {
         this.flight.dispatchedAt = now;
         this.flight.retryAfter = null;
         if (!this.send(this.flight.command)) this.online = false;
@@ -116,13 +140,15 @@ export class SyncSession {
       const files: Files = {};
       let bytes = 0;
       for (const element of this.pending.values()) {
-        if (elements.length >= 50) break;
+        if (elements.length >= PATCH_BATCH_ELEMENTS) break;
         const id = element.type === "image" && !element.isDeleted ? String(element.fileId ?? "") : "";
         const file = id && !this.knownFiles.has(id) ? this.files[id] : undefined;
         if (id && !this.knownFiles.has(id) && !file) continue;
         if (file && Object.keys(files).length && !files[id]) break;
-        const size = new TextEncoder().encode(JSON.stringify(element)).length + (file && !files[id] ? JSON.stringify(file).length : 0);
-        if (bytes + size > 1_800_000) break;
+        const size =
+          new TextEncoder().encode(JSON.stringify(element)).length +
+          (file && !files[id] ? JSON.stringify(file).length : 0);
+        if (bytes + size > PATCH_BATCH_BYTES) break;
         elements.push(element);
         if (file) files[id] = file;
         bytes += size;
@@ -133,12 +159,11 @@ export class SyncSession {
         this.emit();
         return;
       }
-      elements.forEach(element => this.pending.delete(element.id));
+      elements.forEach((element) => this.pending.delete(element.id));
       this.dispatch({ ...this.context(), type: "patch", elements, files });
     } else if (this.action) {
       const context = this.context();
-      if (this.action.type === "done") this.dispatch({ ...context, type: "done", draftRevision: this.snapshot.round?.draftRevision ?? 0 });
-      else this.dispatch({ ...context, ...this.action });
+      this.dispatch({ ...context, ...this.action });
     }
   }
 
@@ -156,14 +181,20 @@ export class SyncSession {
 
   private queueAction(action: QueuedAction) {
     if (!this.online || !this.snapshot || this.action || this.awaitingState) return;
-    if (this.snapshot.board.mode === "poker" && action.type !== "done" && action.type !== "cancel_round") return;
+    if (this.snapshot.board.mode === "poker" && action.type !== "stop_round")
+      return;
     this.action = action;
     this.flush();
     this.emit();
   }
 
   private context() {
-    return { commandId: this.createId(), epoch: this.snapshot!.board.epoch, roundId: this.snapshot!.board.roundId, pageId: this.snapshot!.board.pageId };
+    return {
+      commandId: this.createId(),
+      epoch: this.snapshot!.board.epoch,
+      roundId: this.snapshot!.board.roundId,
+      pageId: this.snapshot!.board.pageId,
+    };
   }
 
   private dispatch(command: BoardCommand) {
@@ -179,13 +210,15 @@ export class SyncSession {
     this.flight = null;
     this.action = null;
     this.awaitingState = false;
-    if (this.recovery.length) this.error = "The round changed. Unconfirmed changes are available as a draft download.";
+    if (this.recovery.length)
+      this.error = "The canvas changed. Unconfirmed changes are available as a draft download.";
   }
 
   receive(event: ServerEvent) {
     switch (event.type) {
       case "metadata":
-        if (this.snapshot) this.snapshot = { ...this.snapshot, board: { ...this.snapshot.board, name: event.name } };
+        if (this.snapshot)
+          this.snapshot = { ...this.snapshot, board: { ...this.snapshot.board, name: event.name } };
         break;
       case "snapshot": {
         const previous = this.snapshot;
@@ -197,25 +230,21 @@ export class SyncSession {
         this.knownFiles = new Set(event.data.fileIds);
         this.online = true;
         this.awaitingState = false;
-        if (this.flight?.command.type !== "patch" && event.data.round?.done && this.flight?.command.type === "done") {
-          this.flight = null;
-          this.action = null;
-        }
         if (this.flight) {
           this.flight.dispatchedAt = this.clock();
           this.send(this.flight.command);
-        }
-        else this.flush();
+        } else this.flush();
         break;
       }
       case "patch":
         if (!this.snapshot || event.revision <= this.snapshot.board.revision) break;
         this.canonical = mergeById(this.canonical, structuredClone(event.elements));
         this.snapshot = { ...this.snapshot, board: { ...this.snapshot.board, revision: event.revision } };
-        if (event.scope === "public") this.snapshot.publicIds = [...new Set([...this.snapshot.publicIds, ...event.elements.map(el => el.id)])];
-        else if (event.actorId === this.snapshot.participantId && this.snapshot.round)
-          this.snapshot.round = { ...this.snapshot.round, draftRevision: event.revision };
-        event.fileIds.forEach(id => this.knownFiles.add(id));
+        if (event.scope === "public")
+          this.snapshot.publicIds = [
+            ...new Set([...this.snapshot.publicIds, ...event.elements.map((el) => el.id)]),
+          ];
+        event.fileIds.forEach((id) => this.knownFiles.add(id));
         if (this.flight?.command.commandId === event.commandId) this.flight.accepted = true;
         break;
       case "ack":
@@ -236,10 +265,12 @@ export class SyncSession {
       case "error":
         this.error = event.message;
         if (event.commandId && this.flight?.command.commandId === event.commandId) {
-          if (event.code === "rate_limit") this.flight.retryAfter = this.clock() + 1200;
+          if (event.code === "rate_limit") this.flight.retryAfter = this.clock() + THROTTLE_RETRY_MS;
           else {
             this.preserveDraft();
-            this.error = event.message + (this.recovery.length ? " Unconfirmed changes are available as a draft download." : "");
+            this.error =
+              event.message +
+              (this.recovery.length ? " Unconfirmed changes are available as a draft download." : "");
           }
           if (event.code === "stale_round") this.send({ type: "resync" });
         }
@@ -248,7 +279,19 @@ export class SyncSession {
     this.emit();
   }
 
-  addFiles(files: Files) { this.files = { ...this.files, ...files }; this.emit(); }
+  reportError(message: string) {
+    this.error = message;
+    this.emit();
+  }
 
-  recoveryExported() { this.recovery = []; this.error = ""; this.emit(); }
+  addFiles(files: Files) {
+    this.files = { ...this.files, ...files };
+    this.emit();
+  }
+
+  recoveryExported() {
+    this.recovery = [];
+    this.error = "";
+    this.emit();
+  }
 }

@@ -98,7 +98,7 @@ object ElementValidation {
         )
 
     fun validateElements(items: JsonNode): List<JsonNode> {
-        if (!items.isArray || items.size() > 100)
+        if (!items.isArray || items.size() > BoardLimits.PATCH_ELEMENTS)
             fail("invalid_patch", "A change can contain at most 100 elements.")
         val ids = mutableSetOf<String>()
         return items.map { raw ->
@@ -114,193 +114,219 @@ object ElementValidation {
                     !safeId.matches(raw.path("fileId").asText())
             )
                 invalid()
-            for (field in listOf("x", "y", "width", "height")) finite(raw.path(field), 1_000_000.0)
-            if (raw.path("width").asDouble() < 0 || raw.path("height").asDouble() < 0) invalid()
-            for (field in numeric) raw.get(field)?.let { finite(it, 1e16) }
-            for (field in booleans) raw.get(field)?.let {
-                if (
-                    !it.isBoolean &&
-                        !(it.isNull && field in setOf("startIsSpecial", "endIsSpecial"))
-                )
-                    invalid()
-            }
-            for (field in strings) raw.get(field)?.let {
-                if (!it.isTextual || it.asText().length > 128) invalid()
-            }
-            for (field in listOf("text", "originalText")) raw.get(field)?.let {
-                if (!it.isTextual || it.asText().length > 10_000) invalid()
-            }
-            val enums =
-                mapOf(
-                    "fillStyle" to setOf("hachure", "cross-hatch", "solid", "zigzag"),
-                    "strokeStyle" to setOf("solid", "dashed", "dotted"),
-                    "textAlign" to setOf("left", "center", "right"),
-                    "verticalAlign" to setOf("top", "middle", "bottom"),
-                    "status" to setOf("pending", "saved", "error"),
-                )
-            for ((field, values) in enums) raw.get(field)?.let {
-                if (it.asText() !in values) invalid()
-            }
-            raw.get("fontFamily")?.let {
-                if (!it.isIntegralNumber || it.asInt() !in setOf(1, 2, 3, 5, 6, 7, 8, 9)) invalid()
-            }
-            raw.get("fontSize")?.let { if (it.asDouble() !in 1.0..1000.0) invalid() }
-            raw.get("lineHeight")?.let { if (it.asDouble() !in 0.1..10.0) invalid() }
-            for ((field, bound) in
-                mapOf("opacity" to 100.0, "strokeWidth" to 100.0, "roughness" to 10.0)) raw.get(
-                    field
-                )
-                ?.let { if (it.asDouble() !in 0.0..bound) invalid() }
-            if (
-                raw.path("type").asText() in setOf("line", "arrow", "freedraw") &&
-                    (!raw.path("points").isArray || raw.path("points").isEmpty)
-            )
-                invalid()
-            raw.get("lastCommittedPoint")
-                ?.takeUnless { it.isNull }
-                ?.let {
-                    if (!it.isArray || it.size() != 2) invalid()
-                    it.forEach { number -> finite(number, 1_000_000.0) }
-                }
-            raw.get("crop")
-                ?.takeUnless { it.isNull }
-                ?.let { crop ->
-                    if (!crop.isObject) invalid()
-                    for (field in
-                        listOf(
-                            "x",
-                            "y",
-                            "width",
-                            "height",
-                            "naturalWidth",
-                            "naturalHeight",
-                        )) finite(crop.path(field), 1_000_000.0)
-                    for (field in listOf("width", "height", "naturalWidth", "naturalHeight")) if (
-                        crop.path(field).asDouble() <= 0
-                    )
-                        invalid()
-                }
-            raw.get("fixedSegments")
-                ?.takeUnless { it.isNull }
-                ?.let { segments ->
-                    if (!segments.isArray || segments.size() > 100) invalid()
-                    segments.forEach { segment ->
-                        if (
-                            !segment.isObject ||
-                                !segment.path("index").isIntegralNumber ||
-                                segment.path("index").asInt() !in 0 until raw.path("points").size()
-                        )
-                            invalid()
-                        for (field in listOf("start", "end")) {
-                            val point = segment.path(field)
-                            if (!point.isArray || point.size() != 2) invalid()
-                            point.forEach { number -> finite(number, 1_000_000.0) }
-                        }
-                    }
-                }
-            for (field in listOf("fileId", "frameId", "containerId")) raw.get(field)
-                ?.takeUnless { it.isNull }
-                ?.let { if (!it.isTextual || !safeId.matches(it.asText())) invalid() }
-            raw.get("index")
-                ?.takeUnless { it.isNull }
-                ?.let { if (!it.isTextual || !validIndex(it.asText())) invalid() }
-            raw.get("groupIds")?.let { list ->
-                if (
-                    !list.isArray ||
-                        list.size() > 100 ||
-                        list.any { !it.isTextual || !safeId.matches(it.asText()) }
-                )
-                    invalid()
-            }
-            for (field in listOf("points", "scale")) raw.get(field)?.let { value ->
-                if (!value.isArray || value.size() > 4000) invalid()
-                if (field == "scale") {
-                    if (value.size() != 2) invalid()
-                    value.forEach {
-                        finite(it, 1.0)
-                        if (kotlin.math.abs(it.asDouble()) != 1.0) invalid()
-                    }
-                } else
-                    value.forEach { point ->
-                        if (!point.isArray || point.size() != 2) invalid()
-                        point.forEach { finite(it, 1_000_000.0) }
-                    }
-            }
-            raw.get("pressures")?.let { values ->
-                if (!values.isArray || values.size() > 4000) invalid()
-                values.forEach { finite(it, 1.0) }
-            }
-            raw.get("boundElements")
-                ?.takeUnless { it.isNull }
-                ?.let { values ->
-                    if (!values.isArray || values.size() > 100) invalid()
-                    values.forEach {
-                        if (
-                            !it.isObject ||
-                                !it.path("id").isTextual ||
-                                !safeId.matches(it.path("id").asText()) ||
-                                it.path("type").asText() !in setOf("arrow", "text")
-                        )
-                            invalid()
-                    }
-                }
-            for (field in listOf("startBinding", "endBinding")) raw.get(field)
-                ?.takeUnless { it.isNull }
-                ?.let { binding ->
-                    if (
-                        !binding.isObject ||
-                            !binding.path("elementId").isTextual ||
-                            !safeId.matches(binding.path("elementId").asText())
-                    )
-                        invalid()
-                    binding.get("focus")?.let { finite(it, 1.0) }
-                    binding.get("gap")?.let { finite(it, 1_000_000.0) }
-                    binding
-                        .get("fixedPoint")
-                        ?.takeUnless { it.isNull }
-                        ?.let {
-                            if (!it.isArray || it.size() != 2) invalid()
-                            it.forEach { number -> finite(number, 1_000_000.0) }
-                        }
-                }
-            raw.get("roundness")
-                ?.takeUnless { it.isNull }
-                ?.let {
-                    if (!it.isObject) invalid()
-                    finite(it.path("type"), 10.0)
-                    it.get("value")?.let { value -> finite(value, 1_000_000.0) }
-                }
-            for (field in listOf("startArrowhead", "endArrowhead")) raw.get(field)
-                ?.takeUnless { it.isNull }
-                ?.let {
-                    if (
-                        !it.isTextual ||
-                            it.asText() !in
-                                setOf(
-                                    "arrow",
-                                    "bar",
-                                    "dot",
-                                    "circle",
-                                    "circle_outline",
-                                    "triangle",
-                                    "triangle_outline",
-                                    "diamond",
-                                    "diamond_outline",
-                                    "crowfoot_one",
-                                    "crowfoot_many",
-                                    "crowfoot_one_or_many",
-                                )
-                    )
-                        invalid()
-                }
+            validateScalarFields(raw)
+            validateShapeGeometry(raw)
+            validateObjectReferences(raw)
+            validatePointArrays(raw)
+            validateBindings(raw)
+            validateDecorations(raw)
             // Nested optional drawing metadata must contain bounded scalar/array/object values.
             validateNested(raw, 0)
             (raw.deepCopy<JsonNode>() as ObjectNode).apply {
                 remove(raw.fieldNames().asSequence().filter { it !in fields }.toList())
+                put("updated", 0)
                 defaults(this)
             }
         }
     }
+
+    private fun validateScalarFields(raw: JsonNode) {
+        for (field in listOf("x", "y", "width", "height")) finite(raw.path(field), 1_000_000.0)
+        if (raw.path("width").asDouble() < 0 || raw.path("height").asDouble() < 0) invalid()
+        for (field in numeric) raw.get(field)?.let { finite(it, 1e16) }
+        for (field in booleans) raw.get(field)?.let {
+            if (
+                !it.isBoolean &&
+                    !(it.isNull && field in setOf("startIsSpecial", "endIsSpecial"))
+            )
+                invalid()
+    }
+    for (field in strings) raw.get(field)?.let {
+        if (!it.isTextual || it.asText().length > 128) invalid()
+    }
+    for (field in listOf("text", "originalText")) raw.get(field)?.let {
+        if (!it.isTextual || it.asText().length > 10_000) invalid()
+    }
+    val enums =
+        mapOf(
+            "fillStyle" to setOf("hachure", "cross-hatch", "solid", "zigzag"),
+            "strokeStyle" to setOf("solid", "dashed", "dotted"),
+            "textAlign" to setOf("left", "center", "right"),
+            "verticalAlign" to setOf("top", "middle", "bottom"),
+            "status" to setOf("pending", "saved", "error"),
+        )
+    for ((field, values) in enums) raw.get(field)?.let {
+        if (it.asText() !in values) invalid()
+    }
+    raw.get("fontFamily")?.let {
+        if (!it.isIntegralNumber || it.asInt() !in setOf(1, 2, 3, 5, 6, 7, 8, 9)) invalid()
+    }
+    raw.get("fontSize")?.let { if (it.asDouble() !in 1.0..1000.0) invalid() }
+    raw.get("lineHeight")?.let { if (it.asDouble() !in 0.1..10.0) invalid() }
+    for ((field, bound) in
+        mapOf("opacity" to 100.0, "strokeWidth" to 100.0, "roughness" to 10.0)) raw.get(
+            field
+        )
+        ?.let { if (it.asDouble() !in 0.0..bound) invalid() }
+    if (
+        raw.path("type").asText() in setOf("line", "arrow", "freedraw") &&
+            (!raw.path("points").isArray || raw.path("points").isEmpty)
+    )
+        invalid()
+    }
+
+    private fun validateShapeGeometry(raw: JsonNode) {
+        raw.get("lastCommittedPoint")
+            ?.takeUnless { it.isNull }
+            ?.let {
+                if (!it.isArray || it.size() != 2) invalid()
+                it.forEach { number -> finite(number, 1_000_000.0) }
+            }
+        raw.get("crop")
+            ?.takeUnless { it.isNull }
+            ?.let { crop ->
+                if (!crop.isObject) invalid()
+                for (field in
+                    listOf(
+                        "x",
+                        "y",
+                        "width",
+                        "height",
+                        "naturalWidth",
+                        "naturalHeight",
+                    )) finite(crop.path(field), 1_000_000.0)
+                for (field in listOf("width", "height", "naturalWidth", "naturalHeight")) if (
+                    crop.path(field).asDouble() <= 0
+                )
+                    invalid()
+            }
+        raw.get("fixedSegments")
+            ?.takeUnless { it.isNull }
+            ?.let { segments ->
+                if (!segments.isArray || segments.size() > 100) invalid()
+                segments.forEach { segment ->
+                    if (
+                        !segment.isObject ||
+                            !segment.path("index").isIntegralNumber ||
+                            segment.path("index").asInt() !in 0 until raw.path("points").size()
+                    )
+                        invalid()
+                    for (field in listOf("start", "end")) {
+                        val point = segment.path(field)
+                        if (!point.isArray || point.size() != 2) invalid()
+                        point.forEach { number -> finite(number, 1_000_000.0) }
+                    }
+                }
+            }
+    }
+
+    private fun validateObjectReferences(raw: JsonNode) {
+        for (field in listOf("fileId", "frameId", "containerId")) raw.get(field)
+            ?.takeUnless { it.isNull }
+            ?.let { if (!it.isTextual || !safeId.matches(it.asText())) invalid() }
+        raw.get("index")
+            ?.takeUnless { it.isNull }
+            ?.let { if (!it.isTextual || !validIndex(it.asText())) invalid() }
+        raw.get("groupIds")?.let { list ->
+            if (
+                !list.isArray ||
+                    list.size() > 100 ||
+                    list.any { !it.isTextual || !safeId.matches(it.asText()) }
+            )
+                invalid()
+    }
+    }
+
+    private fun validatePointArrays(raw: JsonNode) {
+        for (field in listOf("points", "scale")) raw.get(field)?.let { value ->
+            if (!value.isArray || value.size() > 4000) invalid()
+            if (field == "scale") {
+                if (value.size() != 2) invalid()
+                value.forEach {
+                    finite(it, 1.0)
+                    if (kotlin.math.abs(it.asDouble()) != 1.0) invalid()
+                }
+            } else
+                value.forEach { point ->
+                    if (!point.isArray || point.size() != 2) invalid()
+                    point.forEach { finite(it, 1_000_000.0) }
+                }
+    }
+    raw.get("pressures")?.let { values ->
+        if (!values.isArray || values.size() > 4000) invalid()
+        values.forEach { finite(it, 1.0) }
+    }
+    }
+
+    private fun validateBindings(raw: JsonNode) {
+        raw.get("boundElements")
+            ?.takeUnless { it.isNull }
+            ?.let { values ->
+                if (!values.isArray || values.size() > 100) invalid()
+                values.forEach {
+                    if (
+                        !it.isObject ||
+                            !it.path("id").isTextual ||
+                            !safeId.matches(it.path("id").asText()) ||
+                            it.path("type").asText() !in setOf("arrow", "text")
+                    )
+                        invalid()
+                }
+            }
+        for (field in listOf("startBinding", "endBinding")) raw.get(field)
+            ?.takeUnless { it.isNull }
+            ?.let { binding ->
+                if (
+                    !binding.isObject ||
+                        !binding.path("elementId").isTextual ||
+                        !safeId.matches(binding.path("elementId").asText())
+                )
+                    invalid()
+                binding.get("focus")?.let { finite(it, 1.0) }
+                binding.get("gap")?.let { finite(it, 1_000_000.0) }
+                binding
+                    .get("fixedPoint")
+                    ?.takeUnless { it.isNull }
+                    ?.let {
+                        if (!it.isArray || it.size() != 2) invalid()
+                        it.forEach { number -> finite(number, 1_000_000.0) }
+                    }
+            }
+    }
+
+    private fun validateDecorations(raw: JsonNode) {
+        raw.get("roundness")
+            ?.takeUnless { it.isNull }
+            ?.let {
+                if (!it.isObject) invalid()
+                finite(it.path("type"), 10.0)
+                it.get("value")?.let { value -> finite(value, 1_000_000.0) }
+            }
+        for (field in listOf("startArrowhead", "endArrowhead")) raw.get(field)
+            ?.takeUnless { it.isNull }
+            ?.let {
+                if (
+                    !it.isTextual ||
+                        it.asText() !in
+                            setOf(
+                                "arrow",
+                                "bar",
+                                "dot",
+                                "circle",
+                                "circle_outline",
+                                "triangle",
+                                "triangle_outline",
+                                "diamond",
+                                "diamond_outline",
+                                "crowfoot_one",
+                                "crowfoot_many",
+                                "crowfoot_one_or_many",
+                            )
+                )
+                    invalid()
+            }
+    }
+
 
     /** Complete optional legacy fields so a minimal valid patch cannot poison the editor. */
     private fun defaults(element: ObjectNode) {
@@ -416,6 +442,8 @@ object ElementValidation {
                     }
                     .toList()
             )
+            sanitized.put("created", 0)
+            sanitized.remove("lastRetrieved")
             for (field in listOf("created", "lastRetrieved")) sanitized.get(field)?.let {
                 finite(it, 1e16)
             }

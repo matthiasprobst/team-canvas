@@ -1,5 +1,7 @@
 # User dashboard and Keycloak sign-in
 
+Historical backlog. The [company-readiness backlog](company-readiness/README.md) supersedes readiness-based poker and authorship requirements.
+
 Status: In progress — implementation is present; runtime acceptance/release checks remain pending. See [validation evidence](validation.md).
 
 ## Goal

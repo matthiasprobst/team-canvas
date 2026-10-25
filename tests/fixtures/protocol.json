@@ -1,0 +1,116 @@
+[
+  {
+    "type": "snapshot",
+    "data": {
+      "board": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "Test",
+        "mode": "standard",
+        "roundId": null,
+        "epoch": 0,
+        "revision": 0,
+        "pageId": "00000000-0000-4000-8000-000000000003"
+      },
+      "round": null,
+      "elements": [],
+      "publicIds": [],
+      "fileIds": [],
+      "pages": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "position": 0
+        }
+      ],
+      "pokerCreatedIds": [],
+      "participantId": "00000000-0000-4000-8000-000000000002",
+      "role": "host"
+    }
+  },
+  {
+    "type": "snapshot",
+    "data": {
+      "board": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "name": "Test",
+        "mode": "poker",
+        "roundId": "00000000-0000-4000-8000-000000000004",
+        "epoch": 1,
+        "revision": 0,
+        "pageId": "00000000-0000-4000-8000-000000000003"
+      },
+      "round": {
+        "id": "00000000-0000-4000-8000-000000000004"
+      },
+      "elements": [],
+      "publicIds": [],
+      "fileIds": [],
+      "pages": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "position": 0
+        }
+      ],
+      "pokerCreatedIds": [],
+      "participantId": "00000000-0000-4000-8000-000000000002",
+      "role": "host"
+    }
+  },
+  {
+    "type": "patch",
+    "commandId": "00000000-0000-4000-8000-000000000005",
+    "revision": 1,
+    "scope": "private",
+    "elements": [],
+    "fileIds": []
+  },
+  {
+    "type": "ack",
+    "commandId": "00000000-0000-4000-8000-000000000005",
+    "revision": 1
+  },
+  {
+    "type": "round",
+    "board": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "Test",
+      "mode": "poker",
+      "roundId": "00000000-0000-4000-8000-000000000004",
+      "epoch": 1,
+      "revision": 0,
+      "pageId": "00000000-0000-4000-8000-000000000003"
+    },
+    "round": {
+      "id": "00000000-0000-4000-8000-000000000004"
+    }
+  },
+  {
+    "type": "metadata",
+    "name": "Renamed"
+  },
+  {
+    "type": "presence",
+    "connections": 1,
+    "participants": [
+      {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "name": "Me",
+        "role": "host"
+      }
+    ]
+  },
+  {
+    "type": "cursor",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "x": 1.0,
+    "y": 2.0
+  },
+  {
+    "type": "pong"
+  },
+  {
+    "type": "error",
+    "commandId": null,
+    "code": "unauthorized",
+    "message": "Please sign in."
+  }
+]

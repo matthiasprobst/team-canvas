@@ -27,8 +27,7 @@ Match existing code: two-space indentation in TypeScript, four spaces in Kotlin.
 Run backend JUnit tests with `cd backend && mvn test`. Name Kotlin test classes `*Test`; use descriptive behavior names. Node tests use `node:test` and `*.test.mjs`. From the repository root after frontend dependency installation:
 
 ```sh
-frontend/node_modules/.bin/tsc --target es2022 --module commonjs --moduleResolution node --skipLibCheck --outDir .test-build frontend/src/protocol.ts frontend/src/syncCore.ts
-node --test tests/syncCore.test.mjs
+npm run test:sync --prefix frontend
 node tests/smoke.mjs
 ```
 

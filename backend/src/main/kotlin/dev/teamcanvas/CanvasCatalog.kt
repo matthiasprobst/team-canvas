@@ -13,6 +13,7 @@ constructor(
     private val repository: BoardRepository,
     private val accounts: Accounts,
     private val access: CanvasAccess,
+    private val scenes: SceneRepository = SceneRepository(com.fasterxml.jackson.module.kotlin.jacksonObjectMapper()),
 ) {
     fun list(
         identity: LoginIdentity,
@@ -160,6 +161,7 @@ constructor(
             accounts.requireLogin(c, user.id, identity.sid)
             access.requireOwner(c, id, user)
             c.update("UPDATE boards SET template_visibility=? WHERE id=?", visibility, id)
+            recordAccess(c, id, user.id, if (visibility == "public") "template_published" else "template_private")
         }
     }
 
@@ -170,13 +172,15 @@ constructor(
             accounts.requireLogin(c, user.id, identity.sid)
             access.requireOwner(c, id, user)
             c.update("UPDATE boards SET template_visibility=NULL WHERE id=?", id)
+            recordAccess(c, id, user.id, "template_unpublished")
         }
     }
 
     fun startTemplate(id: UUID, name: String, identity: LoginIdentity): CreatedBoard {
         val user = accounts.current(identity)
         return repository.transaction { c ->
-            val source = repository.board(c, id)
+            repository.board(c, id)
+            repository.limits.requireOwnedSlot(c, user.id)
             accounts.requireLogin(c, user.id, identity.sid)
             val visibility = c.query(
                 "SELECT template_visibility FROM boards WHERE id=?",
@@ -198,41 +202,35 @@ constructor(
                 user.id,
                 user.displayName,
             )
-            // Keep only shared canvas content. Reassign authorship to the new owner and leave
-            // round IDs, members, invitations, sessions, and private poker work behind.
-            c.update(
-                """INSERT INTO elements(board_id,id,body,scope,author_id,round_id,stored_bytes,page_id,poker_created)
-                SELECT ?,id,body,'public',?,NULL,stored_bytes,?,poker_created FROM elements
-                WHERE board_id=? AND page_id=? AND scope='public'""",
-                copyId,
-                participantId,
-                repository.board(c, copyId).pageId,
-                id,
-                source.pageId,
-            )
-            c.update(
-                """INSERT INTO assets(board_id,id,body,scope,author_id,round_id,stored_bytes,page_id)
-                SELECT ?, a.id, a.body, 'public', ?, NULL, a.stored_bytes,?
-                FROM assets a
-                WHERE a.board_id=? AND a.page_id=? AND a.scope='public'
-                  AND EXISTS (
-                    SELECT 1 FROM elements e
-                    WHERE e.board_id=a.board_id AND e.page_id=a.page_id AND e.scope='public'
-                      AND e.body->>'type'='image' AND e.body->>'fileId'=a.id
-                      AND NOT COALESCE((e.body->>'isDeleted')::boolean, false)
-                  )""",
-                copyId,
-                participantId,
-                repository.board(c, copyId).pageId,
-                id,
-                source.pageId,
-            )
+            val sourcePages = repository.pages(c, id)
+            if (sourcePages.size > repository.limits.maxPages)
+                throw ClientException("limit", "Template exceeds the configured page limit.")
+            val firstPage = repository.board(c, copyId).pageId
+            val target = Participant(participantId, copyId, user.displayName, "host", null)
+            for ((index, sourcePage) in sourcePages.withIndex()) {
+                val targetPage = if (index == 0) firstPage else UUID.randomUUID().also {
+                    c.update("INSERT INTO canvas_pages(id,board_id,position) VALUES(?,?,?)", it, copyId, index)
+                }
+                val elements = scenes.publicPageElements(c, id, sourcePage.id)
+                val mapping = PageCopy(elements.map { it.body })
+                val files = scenes.publicAssets(c, id, sourcePage.id, mapping.fileIds.keys)
+                for ((oldId, newId) in mapping.fileIds) {
+                    val original = files[oldId] ?: throw ClientException("invalid_file", "Template image is missing.")
+                    val file = original.deepCopy<com.fasterxml.jackson.databind.node.ObjectNode>().put("id", newId)
+                    scenes.insertCopy(c, SceneTable.ASSETS, target, targetPage, newId, file, false)
+                }
+                for (element in elements) {
+                    val copy = mapping.element(element.body)
+                    scenes.insertCopy(c, SceneTable.ELEMENTS, target, targetPage, copy.path("id").asText(), copy, element.pokerCreated)
+                }
+            }
             c.update(
                 """INSERT INTO canvas_tags(board_id,tag,normalized_tag)
                 SELECT ?,tag,normalized_tag FROM canvas_tags WHERE board_id=?""",
                 copyId,
                 id,
             )
+            repository.limits.requireStorage(c, copyId)
             CreatedBoard(copyId, title)
         }
     }

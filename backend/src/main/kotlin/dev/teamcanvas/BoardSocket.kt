@@ -12,7 +12,6 @@ import jakarta.websocket.*
 import jakarta.websocket.server.ServerEndpoint
 import jakarta.websocket.server.ServerEndpointConfig
 import java.security.Principal
-import java.util.ArrayDeque
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -34,75 +33,6 @@ internal fun webSocketPrincipal(principal: Principal?): JsonWebToken {
         ?: throw ClientException("unauthorized", "Please sign in.")
 }
 
-/** One ordered, bounded send queue per socket; a slow reader cannot accumulate unlimited data. */
-private class Peer(val session: Session, val identity: LoginIdentity, val authExpiresAt: Long) {
-    @Volatile private var closed = false
-    @Volatile var participant: Participant? = null
-    var token: String = ""
-    var lastCursorAt = 0L
-    var lastResyncAt = 0L
-    @Volatile var lastAuthAt = 0L
-    val openedAt = System.currentTimeMillis()
-    private val queue = ArrayDeque<String>()
-    private var queuedBytes = 0L
-    private var closing: Pair<Int, String>? = null
-
-    @Synchronized
-    fun send(text: String) {
-        if (closed || !session.isOpen) return
-        val size = text.toByteArray(Charsets.UTF_8).size
-        if (queue.size >= 64 || queuedBytes + size > 8_000_000) {
-            deferClose(1013, "Slow reader")
-            return
-        }
-        queue.addLast(text)
-        queuedBytes += size
-        if (queue.size == 1) sendNext()
-    }
-
-    @Synchronized
-    private fun sendNext() {
-        if (closed) return
-        val text =
-            queue.peekFirst()
-                ?: run {
-                    closing?.let { deferClose(it.first, it.second) }
-                    return
-                }
-        try {
-            session.asyncRemote.sendText(text) { result ->
-                synchronized(this) {
-                    if (!result.isOK) {
-                        deferClose(1011, "Delivery failed")
-                        return@synchronized
-                    }
-                    queue.pollFirst()?.let { queuedBytes -= it.toByteArray(Charsets.UTF_8).size }
-                    if (session.isOpen) sendNext()
-                }
-            }
-        } catch (_: Exception) {
-            deferClose(1011, "Delivery failed")
-        }
-    }
-
-    private fun deferClose(code: Int, reason: String) {
-        java.util.concurrent.CompletableFuture.runAsync { close(code, reason) }
-    }
-
-    @Synchronized
-    fun closeAfterDrain(code: Int, reason: String) {
-        closing = code to reason
-        if (queue.isEmpty()) deferClose(code, reason)
-    }
-
-    fun close(code: Int, reason: String) {
-        closed = true
-        try {
-            session.close(CloseReason(CloseReason.CloseCodes.getCloseCode(code), reason))
-        } catch (_: Exception) {}
-    }
-}
-
 @ApplicationScoped
 class RoomHub
 @Inject
@@ -121,7 +51,7 @@ constructor(
     // Fixed stripes avoid retaining locks for arbitrary or abandoned board IDs.
     private val locks = Array(256) { Any() }
     private val modes = ConcurrentHashMap<UUID, String>()
-    private val capacity = Semaphore(200)
+    private val capacity = Semaphore(BoardLimits.CONNECTIONS)
     private val sweeper =
         Executors.newSingleThreadScheduledExecutor { task ->
             Thread(task, "team-canvas-sessions").apply { isDaemon = true }
@@ -136,7 +66,7 @@ constructor(
 
     private fun audience(id: UUID) = peers.values.filter { it.participant?.boardId == id }
 
-    private fun send(peer: Peer, event: Any) = peer.send(json.writeValueAsString(event))
+    private fun send(peer: Peer, event: ServerEvent) = peer.send(json.writeValueAsString(event))
 
     @Synchronized
     fun open(session: Session) {
@@ -152,7 +82,7 @@ constructor(
             if (
                 peers.values.count {
                     it.identity.issuer == identity.issuer && it.identity.subject == identity.subject
-                } >= 20
+                } >= BoardLimits.CONNECTIONS_PER_ACCOUNT
             )
                 throw ClientException("rate_limit", "Too many connections for this account.")
             val expiresAt = jwt.expirationTime * 1000
@@ -182,18 +112,11 @@ constructor(
         try {
             writer.requireOwner()
             if (System.currentTimeMillis() >= peer.authExpiresAt)
-                throw ClientException("unauthorized", "Sign-in session expired.")
+                throw ClientException("login_expired", "Your sign-in session expired. Reconnecting…")
             limits.require("socket:${session.id}", 60)
             val bytes = text.toByteArray(Charsets.UTF_8).size
-            if (bytes > 2_000_000) throw ClientException("too_large", "Message too large.")
-            val packet =
-                try {
-                    json.readTree(text)
-                } catch (_: com.fasterxml.jackson.core.JsonProcessingException) {
-                    throw ClientException("bad_request", "Invalid JSON message.")
-                }
-            if (packet == null || !packet.isObject)
-                throw ClientException("bad_request", "Invalid message.")
+            if (bytes > BoardLimits.MESSAGE_BYTES) throw ClientException("too_large", "Message too large.")
+            val packet = SocketCommandCodec.parse(text, json)
             type = packet.path("type").asText()
             boardId = UUID.fromString(session.requestURI.path.substringAfterLast('/'))
             commandId =
@@ -205,11 +128,13 @@ constructor(
             limits.require("bytes:global", 64_000_000, 10_000, bytes)
             synchronized(lock(boardId)) {
                 if (type == "hello") {
+                    if (packet.path("protocolVersion").asInt() != 2)
+                        throw ClientException("protocol_version", "Reload this page to update the collaboration client.")
                     if (peer.participant != null)
                         throw ClientException("invalid_state", "Already signed in.")
                     val token = packet.path("token").asText("")
                     val who = access.authenticate(boardId, token, peer.identity)
-                    if (audience(boardId).size >= 10)
+                    if (audience(boardId).size >= BoardLimits.CONNECTIONS_PER_BOARD)
                         throw ClientException(
                             "room_full",
                             "A canvas supports at most 10 active connections.",
@@ -217,7 +142,7 @@ constructor(
                     peer.participant = who
                     peer.token = token
                     peer.lastAuthAt = System.currentTimeMillis()
-                    session.maxTextMessageBufferSize = 2_000_000
+                    session.maxTextMessageBufferSize = BoardLimits.MESSAGE_BYTES
                     snapshot(peer)
                     presence(boardId)
                     return@synchronized
@@ -226,7 +151,7 @@ constructor(
                     peer.participant
                         ?: throw ClientException("unauthorized", "Please sign in first.")
                 if (type == "ping") {
-                    send(peer, mapOf("type" to "pong"))
+                    send(peer, PongEvent())
                     return@synchronized
                 }
                 if (type == "cursor") {
@@ -235,6 +160,18 @@ constructor(
                 }
                 access.authenticate(boardId, peer.token, peer.identity)
                 peer.lastAuthAt = System.currentTimeMillis()
+                if (type == "draft") {
+                    limits.require("draft:${session.id}", 5)
+                    val key = packet.path("capability").asText()
+                    val current = store.snapshot(who).board
+                    if (current.mode != "poker" || packet.path("roundId").asText() != current.roundId.toString())
+                        throw ClientException("stale_round", "Poker changed. Reconnect to recover your draft.")
+                    val authorized = who.copy(draftKey = key)
+                    DraftCapabilities.hash(authorized, current.roundId)
+                    peer.participant = authorized
+                    snapshot(peer)
+                    return@synchronized
+                }
                 if (type == "resync") {
                     val now = System.currentTimeMillis()
                     if (now - peer.lastResyncAt < 2000)
@@ -244,61 +181,31 @@ constructor(
                     return@synchronized
                 }
                 limits.require("writes:${session.id}", 20)
-                val context = context(packet)
-                val result =
-                    when (type) {
-                        "patch" -> {
-                            val elements =
-                                ElementValidation.validateElements(packet.path("elements"))
-                            val files = ElementValidation.validateFiles(packet.get("files"))
-                            val patch = store.patch(who, context, elements, files)
-                            if (!patch.result.duplicate) {
-                                val event =
-                                    mapOf(
-                                        "type" to "patch",
-                                        "commandId" to context.commandId,
-                                        "revision" to patch.result.ack.revision,
-                                        "actorId" to who.id,
-                                        "scope" to patch.scope,
-                                        "elements" to elements,
-                                        "fileIds" to files.keys,
-                                    )
-                                audience(boardId)
-                                    .filter {
-                                        patch.scope == "public" || it.participant?.id == who.id
-                                    }
-                                    .forEach { send(it, event) }
-                            }
-                            patch.result
-                        }
-                        "start_round" ->
-                            rounds.start(
-                                who,
-                                context,
-                                audience(boardId).mapNotNull { it.participant?.id }.toSet(),
+                val command = SocketCommandCodec.mutation(packet)
+                val context = command.context
+                val result = when (command) {
+                    is PatchCommand -> {
+                        val patch = store.patch(who, context, command.elements, command.files)
+                        if (!patch.result.duplicate) {
+                            val event = PatchEvent(
+                                context.commandId, patch.result.ack.revision,
+                                patch.scope, command.elements, command.files.keys.toList(),
                             )
-                        "done" -> {
-                            val revision = packet.path("draftRevision")
-                            if (!revision.isIntegralNumber || !revision.canConvertToLong())
-                                throw ClientException("bad_request", "Draft revision is missing.")
-                            rounds.ready(who, context, revision.asLong())
+                            audience(boardId)
+                                .filter { patch.scope == "public" || (who.draftKey != null && it.participant?.draftKey == who.draftKey) }
+                                .forEach { send(it, event) }
                         }
-                        "cancel_round" -> rounds.cancel(who, context)
-                        "create_page" -> pages.create(
-                            who,
-                            context,
-                            packet.path("copyCurrent").asBoolean(false),
-                            packet.path("includePoker").asBoolean(false),
-                        )
-                        "select_page" -> pages.select(
-                            who,
-                            context,
-                            UUID.fromString(packet.path("targetPageId").asText()),
-                        )
-                        else -> throw ClientException("invalid_message", "Unknown message type.")
+                        patch.result
                     }
+                    is StartRoundCommand -> rounds.start(who, context)
+                    is StopRoundCommand -> rounds.stop(who, context)
+                    is CreatePageCommand -> pages.create(who, context, command.copyCurrent, command.includePoker)
+                    is SelectPageCommand -> pages.select(who, context, command.targetPageId)
+                }
                 send(peer, result.ack)
                 metrics.counter("team.canvas.commands", "type", type).increment()
+                // A retried control command still needs its state-completion barrier.
+                if (result.duplicate && type != "patch") snapshot(peer)
                 if (!result.duplicate && type != "patch") {
                     if (result.transitioned) audience(boardId).forEach { snapshot(it) }
                     else
@@ -306,11 +213,7 @@ constructor(
                             val data = store.roundState(it.participant!!)
                             send(
                                 it,
-                                mapOf(
-                                    "type" to "round",
-                                    "board" to data.first,
-                                    "round" to data.second,
-                                ),
+                                RoundEvent(data.first, data.second),
                             )
                         }
                     presence(boardId)
@@ -320,26 +223,16 @@ constructor(
             metrics.counter("team.canvas.rejections", "code", error.code).increment()
             send(
                 peer,
-                mapOf(
-                    "type" to "error",
-                    "commandId" to commandId,
-                    "code" to error.code,
-                    "message" to error.message,
-                ),
+                ErrorEvent(commandId, error.code, error.message),
             )
-            if (error.code in setOf("unauthorized", "room_full"))
+            if (error.code in setOf("unauthorized", "login_expired", "room_full", "protocol_version"))
                 peer.closeAfterDrain(1008, error.code)
             if (error.code == "unavailable" || (error.code == "rate_limit" && commandId == null))
                 peer.closeAfterDrain(1013, error.code)
         } catch (_: IllegalArgumentException) {
             send(
                 peer,
-                mapOf(
-                    "type" to "error",
-                    "commandId" to commandId,
-                    "code" to "bad_request",
-                    "message" to "Invalid message.",
-                ),
+                ErrorEvent(commandId, "bad_request", "Invalid message."),
             )
         } catch (error: Exception) {
             log.errorf(
@@ -351,8 +244,7 @@ constructor(
                             "hello",
                             "patch",
                             "start_round",
-                            "done",
-                            "cancel_round",
+                            "stop_round",
                             "create_page",
                             "select_page",
                             "resync",
@@ -369,27 +261,10 @@ constructor(
         }
     }
 
-    private fun context(packet: JsonNode): CommandContext {
-        val epoch = packet.path("epoch")
-        if (
-            !epoch.isIntegralNumber ||
-                !epoch.canConvertToLong() ||
-                epoch.asLong() < 0 ||
-                !packet.has("roundId") || !packet.hasNonNull("pageId")
-        )
-            throw ClientException("bad_request", "Round context is missing.")
-        return CommandContext(
-            UUID.fromString(packet.path("commandId").asText()),
-            epoch.asLong(),
-            packet.get("roundId").takeUnless { it.isNull }?.let { UUID.fromString(it.asText()) },
-            UUID.fromString(packet.path("pageId").asText()),
-        )
-    }
-
     private fun snapshot(peer: Peer) {
         val data = store.snapshot(peer.participant!!)
         modes[data.board.id] = data.board.mode
-        send(peer, mapOf("type" to "snapshot", "data" to data))
+        send(peer, SnapshotEvent(data))
     }
 
     private fun presence(id: UUID) {
@@ -397,9 +272,9 @@ constructor(
             audience(id)
                 .mapNotNull { it.participant }
                 .distinctBy { it.id }
-                .map { mapOf("id" to it.id, "name" to it.name, "role" to it.role) }
+                .map { PresenceMember(it.id, it.name, it.role) }
         audience(id).forEach {
-            send(it, mapOf("type" to "presence", "participants" to participants))
+            send(it, PresenceEvent(participants, audience(id).size))
         }
     }
 
@@ -420,7 +295,7 @@ constructor(
         peer.lastCursorAt = now
         audience(who.boardId)
             .filter { it !== peer }
-            .forEach { send(it, mapOf("type" to "cursor", "id" to who.id, "x" to x, "y" to y)) }
+            .forEach { send(it, CursorEvent(who.id, x, y)) }
     }
 
     fun remove(session: Session) {
@@ -440,24 +315,36 @@ constructor(
             .forEach { it.close(1008, "Signed out") }
     }
 
+    fun disconnectAccount(issuer: String, subject: String) {
+        peers.values.filter { it.identity.issuer == issuer && it.identity.subject == subject }
+            .forEach { it.close(1008, "Account access removed") }
+    }
+
+    fun ownershipChanged(id: UUID) = synchronized(lock(id)) {
+        audience(id).forEach { it.close(1008, "Ownership changed. Reopen this canvas.") }
+    }
+
+    fun deletedByAdmin(id: UUID) = delete(id) { }
+
     fun rename(id: UUID, action: () -> String): String =
         synchronized(lock(id)) {
             val name = action()
-            audience(id).forEach { send(it, mapOf("type" to "metadata", "name" to name)) }
+            audience(id).forEach { send(it, MetadataEvent(name)) }
             name
         }
+
+    fun <T> refresh(id: UUID, action: () -> T): T = synchronized(lock(id)) {
+        val result = action()
+        audience(id).forEach { snapshot(it) }
+        result
+    }
 
     fun delete(id: UUID, action: () -> Unit) =
         synchronized(lock(id)) {
             action()
             modes.remove(id)
             audience(id).forEach {
-                send(it, mapOf(
-                    "type" to "error",
-                    "commandId" to null,
-                    "code" to "canvas_deleted",
-                    "message" to "This canvas was deleted by its owner.",
-                ))
+                send(it, ErrorEvent(null, "canvas_deleted", "This canvas was deleted by its owner."))
                 it.closeAfterDrain(1008, "Canvas deleted")
             }
         }
@@ -475,11 +362,19 @@ constructor(
                 .forEach { it.close(1008, "Access revoked") }
         }
 
+    fun memberAccess(id: UUID, memberId: UUID, revoked: Boolean, action: () -> Unit) =
+        synchronized(lock(id)) {
+            action()
+            if (revoked) audience(id)
+                .filter { it.participant?.id == memberId }
+                .forEach { it.close(1008, "Access revoked") }
+        }
+
     private fun sweep() {
         for (peer in peers.values) {
             try {
                 val now = System.currentTimeMillis()
-                if (now >= peer.authExpiresAt) peer.close(1008, "Login expired")
+                if (now >= peer.authExpiresAt) peer.close(1008, "login_expired")
                 else if (peer.participant == null && now - peer.openedAt > 10_000)
                     peer.close(1008, "Authentication timeout")
                 else if (peer.participant != null && now - peer.lastAuthAt > 30_000) {

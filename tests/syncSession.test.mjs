@@ -4,11 +4,19 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { SyncSession } = require('../.test-build/syncSession.js');
 const box = (id, x = 0) => ({ id, type: 'rectangle', x, y: 0, width: 10, height: 10 });
-const snapshot = (poker = false) => ({
-  board: { id: 'board', name: 'Test', mode: poker ? 'poker' : 'standard', roundId: poker ? 'round' : null, epoch: poker ? 1 : 0, revision: 0 },
-  round: poker ? { id: 'round', done: false, included: true, draftRevision: 0, members: [{ id: 'me', name: 'Me', done: false }, { id: 'other', name: 'Other', done: false }] } : null,
-  elements: [box('public')], publicIds: ['public'], fileIds: [], participantId: 'me', role: 'host',
-});
+import { snapshot as protocolSnapshot } from './fixtures.mjs';
+const snapshot = (poker = false) => {
+  const state = protocolSnapshot(poker);
+  state.board.id = 'board';
+  state.board.roundId = poker ? 'round' : null;
+  state.elements = [box('public')];
+  state.publicIds = ['public'];
+  state.participantId = 'me';
+  if (poker) {
+    state.round.id = 'round';
+  }
+  return state;
+};
 function client(poker = false) {
   const sent = [];
   let n = 0;
@@ -21,24 +29,22 @@ function accepted(session, command, revision, scope = 'public', actorId = 'me') 
   session.receive({ type: 'ack', commandId: command.commandId, revision });
 }
 
-test('ready waits for every pending edit to be acknowledged', () => {
+test('stop waits for this browser pending edits to be acknowledged', () => {
   const { session, sent } = client(true);
   session.localChange([box('public'), box('private', 42)], {});
-  session.control('done');
+  session.control('stop_round');
   assert.equal(sent.length, 1);
   assert.equal(sent[0].type, 'patch');
   accepted(session, sent[0], 4, 'private');
   assert.equal(sent.length, 2);
-  assert.equal(sent[1].type, 'done');
-  assert.equal(sent[1].draftRevision, 4);
+  assert.equal(sent[1].type, 'stop_round');
   assert.equal(sent[1].roundId, 'round');
 });
 
-test('another participant becoming ready preserves the local draft', () => {
+test('round metadata preserves the local draft', () => {
   const { session } = client(true);
   session.localChange([box('public'), box('private', 42)], {});
   const state = snapshot(true);
-  state.round.members[1].done = true;
   state.board.revision = 1;
   session.receive({ type: 'round', board: state.board, round: state.round });
   assert.equal(session.view().elements.find(el => el.id === 'private').x, 42);
@@ -82,6 +88,19 @@ test('reconnect retries the identical command ID and keeps unsent edits', () => 
   session.receive({ type: 'snapshot', data: snapshot() });
   assert.deepEqual(sent[1], sent[0]);
   assert.equal(session.view().elements[0].x, 2);
+});
+
+test('storage cleanup preserves unacknowledged edits for export instead of replaying them into a new epoch', () => {
+  const { session, sent } = client();
+  session.localChange([box('public'), box('pending')], {});
+  session.flush();
+  const cleaned = snapshot(); cleaned.board.epoch = 1; cleaned.board.revision = 2;
+  session.receive({ type: 'snapshot', data: cleaned });
+  session.flush();
+  assert.equal(sent.length, 1);
+  assert.equal(session.view().unsaved, false);
+  assert.equal(session.view().recovery[0].id, 'pending');
+  assert.equal(session.view().elements.some(element => element.id === 'pending'), false);
 });
 
 test('a duplicate receipt after reconnect reveals the canonical snapshot', () => {
@@ -184,7 +203,69 @@ test('renaming during poker preserves unacknowledged edits and frozen readiness'
   assert.equal(session.view().snapshot.board.name, 'Renamed');
   assert.equal(session.view().elements.find(element => element.id === 'private').x, 17);
   assert.equal(session.view().unsaved, true);
-  assert.equal(session.view().snapshot.round.members.length, 2);
+  assert.equal(session.view().snapshot.round.id, "round");
   accepted(session, sent[0], 1, 'private');
   assert.equal(session.view().unsaved, false);
+});
+
+test('duplicate control acknowledgement followed by a snapshot completes a retried no-op page selection', () => {
+  const { session, sent } = client();
+  const state = snapshot();
+  session.selectPage(state.board.pageId);
+  const command = sent[0];
+  session.disconnected();
+  state.board.revision = 1;
+  session.receive({ type: 'snapshot', data: state });
+  assert.deepEqual(sent[1], command);
+  session.receive({ type: 'ack', commandId: command.commandId, revision: 1 });
+  assert.equal(session.view().busy, true);
+  session.receive({ type: 'snapshot', data: state });
+  assert.equal(session.view().busy, false);
+  assert.equal(session.view().unsaved, false);
+  session.localChange([box('public', 8)], {});
+  session.flush();
+  assert.equal(sent.at(-1).type, 'patch');
+});
+
+test('page selection waits for pending edits and a page transition preserves unconfirmed edits as recovery', () => {
+  const { session, sent } = client();
+  session.localChange([box('public', 9)], {});
+  session.selectPage('next-page');
+  assert.equal(sent[0].type, 'patch');
+  accepted(session, sent[0], 1);
+  assert.equal(sent[1].type, 'select_page');
+  const next = snapshot();
+  next.board.pageId = 'next-page';
+  next.board.epoch = 1;
+  next.board.revision = 2;
+  next.elements = [];
+  session.receive({ type: 'ack', commandId: sent[1].commandId, revision: 2 });
+  session.receive({ type: 'snapshot', data: next });
+  assert.equal(session.view().busy, false);
+  assert.deepEqual(session.view().elements, []);
+
+  const other = client();
+  other.session.localChange([box('public', 12)], {});
+  other.session.receive({ type: 'snapshot', data: next });
+  other.session.flush();
+  assert.equal(other.sent.length, 0);
+  assert.equal(other.session.view().recovery[0].x, 12);
+});
+
+test('page actions are blocked during poker and retrying a completed transition does not replay drafts', () => {
+  const { session, sent } = client(true);
+  session.createPage(true, true);
+  session.selectPage('other-page');
+  assert.equal(sent.length, 0);
+  session.control('stop_round');
+  const command = sent[0];
+  session.disconnected();
+  const state = snapshot();
+  state.board.epoch = 2;
+  state.board.revision = 3;
+  session.receive({ type: 'snapshot', data: state });
+  session.receive({ type: 'ack', commandId: command.commandId, revision: 3 });
+  assert.equal(session.view().busy, false);
+  assert.equal(session.view().unsaved, false);
+  assert.equal(sent.length, 1);
 });

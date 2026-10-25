@@ -5,26 +5,114 @@
   "sslRequired": "none",
   "registrationAllowed": false,
   "resetPasswordAllowed": false,
-  "accessTokenLifespan": 1800,
+  "accessTokenLifespan": 300,
   "ssoSessionIdleTimeout": 3600,
   "ssoSessionMaxLifespan": 28800,
-  "clients": [{
-    "clientId": "team-canvas",
-    "name": "Team Canvas",
-    "enabled": true,
-    "protocol": "openid-connect",
-    "publicClient": false,
-    "secret": "${DEV_OIDC_CLIENT_SECRET}",
-    "standardFlowEnabled": true,
-    "directAccessGrantsEnabled": false,
-    "serviceAccountsEnabled": false,
-    "redirectUris": ["${PUBLIC_ORIGIN}/api/login"],
-    "webOrigins": ["${PUBLIC_ORIGIN}"],
-    "attributes": { "post.logout.redirect.uris": "${PUBLIC_ORIGIN}/login", "pkce.code.challenge.method": "S256" },
-    "defaultClientScopes": ["profile", "email", "roles"]
-  }],
+  "clients": [
+    {
+      "clientId": "team-canvas",
+      "name": "Team Canvas",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "${DEV_OIDC_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "${PUBLIC_ORIGIN}/api/login"
+      ],
+      "webOrigins": [
+        "${PUBLIC_ORIGIN}"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "${PUBLIC_ORIGIN}/login",
+        "pkce.code.challenge.method": "S256"
+      },
+      "defaultClientScopes": [
+        "profile",
+        "email",
+        "roles"
+      ]
+    }
+  ],
   "users": [
-    { "id": "cc5a3ab8-92e0-4ef9-b39d-111111111111", "username": "alice", "enabled": true, "emailVerified": true, "email": "alice@example.test", "firstName": "Alice", "lastName": "Morgan", "credentials": [{ "type": "password", "value": "${DEV_ALICE_PASSWORD}", "temporary": false }] },
-    { "id": "cc5a3ab8-92e0-4ef9-b39d-222222222222", "username": "bob", "enabled": true, "emailVerified": true, "email": "bob@example.test", "firstName": "Bob", "lastName": "Taylor", "credentials": [{ "type": "password", "value": "${DEV_BOB_PASSWORD}", "temporary": false }] }
-  ]
+    {
+      "id": "cc5a3ab8-92e0-4ef9-b39d-111111111111",
+      "username": "alice",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "alice@example.test",
+      "firstName": "Alice",
+      "lastName": "Morgan",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${DEV_ALICE_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "clientRoles": {
+        "team-canvas": [
+          "team-canvas-admin"
+        ]
+      }
+    },
+    {
+      "id": "cc5a3ab8-92e0-4ef9-b39d-222222222222",
+      "username": "bob",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "bob@example.test",
+      "firstName": "Bob",
+      "lastName": "Taylor",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${DEV_BOB_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "carol",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "carol@example.test",
+      "firstName": "Carol",
+      "lastName": "Test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "carol-dev-only",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "dave",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "dave@example.test",
+      "firstName": "Dave",
+      "lastName": "Test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dave-dev-only",
+          "temporary": false
+        }
+      ]
+    }
+  ],
+  "roles": {
+    "client": {
+      "team-canvas": [
+        {
+          "name": "team-canvas-admin",
+          "description": "Manage application account lifecycle"
+        }
+      ]
+    }
+  }
 }

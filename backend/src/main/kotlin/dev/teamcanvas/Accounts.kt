@@ -4,13 +4,12 @@ import jakarta.enterprise.context.ApplicationScoped
 import jakarta.inject.Inject
 import java.security.Principal
 import java.sql.Connection
-import java.sql.ResultSet
 import java.util.UUID
 import org.eclipse.microprofile.jwt.JsonWebToken
 
-data class LoginIdentity(val issuer: String, val subject: String, val sid: String, val name: String)
+data class LoginIdentity(val issuer: String, val subject: String, val sid: String, val name: String, val username: String? = null)
 
-data class Account(val id: UUID, val displayName: String)
+data class Account(val id: UUID, val displayName: String, val limits: LimitSettings = LimitSettings(10, 20), val admin: Boolean = false, val username: String? = null)
 
 /** Accept identities only from the JWT principal validated by Quarkus OIDC. */
 fun loginIdentity(principal: Principal?): LoginIdentity {
@@ -33,37 +32,44 @@ fun loginIdentity(principal: Principal?): LoginIdentity {
             .trim()
             .ifEmpty { "User" }
             .take(48)
-    return LoginIdentity(issuer, subject, sid, name)
+    val username = jwt.getClaim<String>("preferred_username")?.trim()?.take(120)?.takeIf { it.isNotEmpty() && it.none(Char::isISOControl) }
+    return LoginIdentity(issuer, subject, sid, name, username)
 }
 
-internal fun Connection.update(sql: String, vararg values: Any?): Int =
-    prepareStatement(sql).use { statement ->
-        values.forEachIndexed { i, value -> statement.setObject(i + 1, value) }
-        statement.executeUpdate()
-    }
-
-internal fun <T> Connection.query(sql: String, vararg values: Any?, read: (ResultSet) -> T): T =
-    prepareStatement(sql).use { statement ->
-        values.forEachIndexed { i, value -> statement.setObject(i + 1, value) }
-        statement.executeQuery().use(read)
-    }
-
 @ApplicationScoped
-class Accounts @Inject constructor(private val repository: BoardRepository) {
+class Accounts @Inject constructor(private val repository: BoardRepository, private val blocks: IdentityBlocks = IdentityBlocks()) {
     fun current(identity: LoginIdentity): Account =
         repository.transaction { connection ->
+            blocks.lock(connection, identity.issuer, identity.subject)
+            blocks.requireAllowed(connection, identity.issuer, identity.subject)
+            val existing = connection.query(
+                "SELECT id,display_name,username,status FROM app_users WHERE issuer=? AND subject=?",
+                identity.issuer, identity.subject,
+            ) { rows ->
+                if (!rows.next()) null else {
+                    if (rows.getString(4) != "active") throw ClientException("unauthorized", "This account is deactivated.")
+                    Account(rows.getObject(1, UUID::class.java), rows.getString(2), username = rows.getString(3))
+                }
+            }
+            if (existing != null && existing.displayName == identity.name && existing.username == identity.username &&
+                connection.query("SELECT 1 FROM login_sessions WHERE user_id=? AND sid=?", existing.id, identity.sid) { it.next() }) {
+                requireLogin(connection, existing.id, identity.sid)
+                return@transaction existing.copy(limits = repository.limits.settings())
+            }
             val account =
                 connection.query(
-                    """INSERT INTO app_users(id,issuer,subject,display_name) VALUES(?,?,?,?)
-            ON CONFLICT(issuer,subject) DO UPDATE SET display_name=EXCLUDED.display_name,last_login_at=now()
+                    """INSERT INTO app_users(id,issuer,subject,display_name,username) VALUES(?,?,?,?,?)
+            ON CONFLICT(issuer,subject) DO UPDATE SET display_name=EXCLUDED.display_name,username=EXCLUDED.username,last_login_at=now()
+            WHERE app_users.status='active'
             RETURNING id,display_name""",
                     UUID.randomUUID(),
                     identity.issuer,
                     identity.subject,
                     identity.name,
+                    identity.username,
                 ) { rows ->
-                    rows.next()
-                    Account(rows.getObject(1, UUID::class.java), rows.getString(2))
+                    if (!rows.next()) throw ClientException("unauthorized", "This account is deactivated.")
+                    Account(rows.getObject(1, UUID::class.java), rows.getString(2), username = identity.username)
                 }
             connection.update(
                 "INSERT INTO login_sessions(user_id,sid) VALUES(?,?) ON CONFLICT DO NOTHING",
@@ -71,13 +77,13 @@ class Accounts @Inject constructor(private val repository: BoardRepository) {
                 identity.sid,
             )
             requireLogin(connection, account.id, identity.sid)
-            account
+            account.copy(limits = repository.limits.settings())
         }
 
     fun requireLogin(connection: Connection, userId: UUID, sid: String) {
         val active =
             connection.query(
-                "SELECT 1 FROM login_sessions WHERE user_id=? AND sid=? AND revoked=false FOR SHARE",
+                "SELECT 1 FROM login_sessions l JOIN app_users u ON u.id=l.user_id WHERE l.user_id=? AND l.sid=? AND NOT l.revoked AND u.status='active' FOR SHARE OF l,u",
                 userId,
                 sid,
             ) {

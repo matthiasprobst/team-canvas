@@ -1,31 +1,56 @@
 # Team Canvas
 
-A shared canvas for feature refinement, architecture discussions, and retrospectives. Draw together, collect ideas privately in poker rounds, and reveal contributions only when everyone is ready.
+A self-hosted collaborative canvas for small company teams running Scrum sessions, feature refinement, architecture discussions, and retrospectives. Draw across multiple pages, save and share canvases, reuse templates, and collect ideas privately in poker rounds before revealing them together.
 
-React, TypeScript, Tailwind, Excalidraw, Kotlin/Quarkus, PostgreSQL, and Keycloak. The application interface is English.
+The core privacy, poker, templates, quotas and administration changes are implemented. See the [checked implementation backlog](.features/company-readiness/README.md) and [validation record](.features/company-readiness/validation.md) for completed work and remaining release gates, including base-image security findings and company-cluster qualification.
+
+## Scope and design principles
+
+The core product is deliberately small:
+
+- **Multi-page canvases:** organize a session across pages, starting blank or copying an existing page.
+- **Poker mode:** collect private drawings and ideas, then let any member publish the saved contributions together. This is a contribution-and-reveal workflow, not a numeric estimation system.
+- **Saved and shared work:** persist acknowledged changes automatically and reopen canvases through an account dashboard; invite colleagues through authenticated sharing links.
+- **Reusable templates:** prepare layouts for Scrum sessions, retrospectives, or architecture discussions and start independent canvases from them.
+- **Required company SSO and privacy:** authenticate every participant and enforce ownership, membership, and private-draft visibility on the server.
+
+Easy company rollout and maintenance are design goals. Prefer a small number of services, established dependencies, explicit permissions, and changes that are easy to review. A new dependency must justify its maintenance cost; fewer dependencies must not mean reimplementing authentication or a drawing editor. Security fixes, reliable saving, safe upgrades, backup/restore, and clear operating instructions are part of the core scope.
+
+Keep additions tied to those workflows. Chat, video calls, AI assistants, task/project management, plugin marketplaces, complex approval workflows, and a general integration platform are outside the intended scope. Existing search, tags, and presence support finding and using canvases; they should stay lightweight.
+
+React/TypeScript and Excalidraw provide the browser UI; Kotlin/Quarkus provides one backend; PostgreSQL stores accounts, drawings, and uploaded images. Caddy serves the UI and proxies requests. Company deployments use an existing Keycloak identity provider. No Redis, message broker, separate image store, or application SaaS account is required. Tailwind and Vite are build tooling, and the UI is English.
+
+The [original simplicity review](docs/simplicity-review.md) records the starting point; the [validation record](.features/company-readiness/validation.md) tracks current rollout gaps. The bundled Compose setup is for disposable development data; use the Helm deployment for the company configuration.
 
 ## Features
 
+- Multiple persistent pages per canvas. Any member can create or select a page, and everyone follows the same selected page. New pages can copy shared content, optionally including revealed poker contributions. Page changes are blocked during a poker round; page renaming, reordering, and deletion are not implemented.
 - A personal dashboard with **All canvases**, **My canvases**, and **Shared with me**, plus search by canvas name or tags and sorting. Owners can add up to 20 tags per canvas; suggestions come from tags on their own canvases, and template copies keep their source tags.
 - Create canvases, rename those you own, and share invitation links. Recipients sign in and explicitly accept invitations.
-- Mark canvases you own as private templates, or make them public for all signed-in users. Owners can edit templates from the Templates page; starting a template opens an independent canvas copied from its shared drawings and images, so changes affect future copies only.
-- Delete canvases you own from the dashboard’s actions menu. Confirmation permanently removes all contents and invitations for everyone, including active poker rounds; connected viewers are notified.
+- Owners can see everyone who joined under **Share → Members**, filter granted/removed memberships, and identify accounts by SSO username and stable account reference. Account deactivation is shown separately. Removing access disconnects all of that member's canvas tabs. Invitation links cannot bypass removal; this also applies to bulk removal and previously removed members. Restoring access allows the member to reopen without a new invitation, while old session tokens remain invalid. Saved contributions remain. **Share → Activity** shows the latest 50 access and maintenance changes from the point this feature was enabled.
+- Public template publication is independent of editing membership. Removed members can still copy a public template; Share clearly marks public templates and lets the owner make them private. Existing copies remain independent.
+- Owners can recover capacity under **Canvas actions → Storage** by removing deleted drawings and unused images across all pages. Cleanup requires poker to be stopped, preserves visible work, and clears undo history for deleted content. Unconfirmed changes in other tabs are preserved for explicit draft export.
+- Mark canvases you own as private templates, or make them public for all signed-in users of this deployment. Owners can edit templates from the Templates page; starting a template opens an independent canvas copied from the shared drawings and images across **all pages**. Private poker drafts, memberships, and invitations are not copied. Changes affect future copies only. Ready-made Scrum/architecture templates are not bundled; create your own layouts.
+- Delete canvases you own from the dashboard’s actions menu. Confirmation permanently removes all contents and invitations for everyone, including active private drafts; connected viewers are notified.
 - Persistent account membership across browsers/devices; independent sessions in multiple tabs.
 - Collaborative shapes, text, sticky notes, images, presence, and shared cursors.
-- Private poker contributions, server-enforced readiness, and automatic all-ready publication.
+- Private poker contributions protected by unlinked draft capabilities; any member can stop poker and reveal saved work.
 - Canvas switching with pending-change protection and draft export.
 
 The backend supports **one active instance per database** and **ten simultaneous connections per canvas**, including multiple tabs. Bots, archive, and revision history are not implemented.
 
 ## Quick start
 
-Install Docker with the Compose plugin. From the repository root:
+Install Docker with the Compose plugin. The bundled Compose setup is for development. Migration validation fails safely without resetting the schema. Use the [company deployment guide](deploy/kubernetes/README.md) for retained company data. From the repository root:
 
 ```sh
 test -f .env || cp .env.example .env
 openssl rand -hex 24
 # Put the generated password into .env as DB_PASSWORD, then:
-docker compose up --build -d --wait --wait-timeout 300
+docker compose build
+docker compose up -d --wait db keycloak
+docker compose run --rm --no-deps backend migrate
+docker compose up -d --wait --wait-timeout 300
 ```
 
 Open **http://localhost:8088** and choose **Login with SSO**. The browser signs in through the separate development Keycloak URL at **http://localhost:8180/auth**. Compose includes a development realm with these example accounts:
@@ -64,20 +89,19 @@ This development setup explicitly permits HTTP cookies and Keycloak HTTP sign-in
 
 ## Poker rounds
 
-1. The owner chooses **Start poker**. Connected users form a fixed roster; multiple tabs for one account count as one participant.
-2. Existing public elements are locked. Each participant sees only their own new elements and images. Cursors are hidden.
-3. **Ready** first waits for pending edits to be acknowledged, then locks that participant’s draft.
-4. The server publishes all remaining contributions together only when **every roster member is ready**. There is no early-reveal action.
-5. Switching canvases, disconnecting, or signing out does not remove a participant or mark them ready. Reopening restores their saved private draft. Late arrivals join the next round.
-6. The owner can **Cancel round**, deleting private contributions without revealing them.
+1. Any member chooses **Start poker**. Existing shared elements stay visible and locked.
+2. New drawings and images are hidden from other members; shared cursors are suppressed.
+3. Any member chooses **Stop poker and reveal** to publish all server-acknowledged contributions together. The owner can leave without blocking the session.
+4. Hidden drafts are persisted using random browser-held capabilities. The database stores their hashes, with no account/participant mapping. Refreshing the same tab recovers its draft; another device needs the secret. Losing the secret does not prevent other members from revealing saved work.
+5. A stop includes committed edits. Late/unacknowledged edits are kept locally for explicit recovery and are never automatically replayed as public edits. Wait for **Saved** before leaving or stopping poker.
 
-Navigation waits for acknowledgements or asks you to export/discard unsaved changes. A browser crash can still lose unacknowledged work held only in memory. An interrupted private draft is never automatically replayed into another round or canvas.
+Drawing/image/page storage does not retain who created each element. Ownership and membership remain for access control. This does not remove names people write into drawings or provide end-to-end encryption.
 
-Owners can revoke invitation links without removing existing members, or additionally remove all shared members. A new invitation does not invalidate earlier links. Revoking a member during poker preserves the frozen roster; the owner can cancel the round if that member cannot return.
+Page changes are blocked during poker. Navigation protects unsaved edits and draft recovery, but no participant must remain connected or mark themselves ready. A crash can lose edits that never reached the server.
 
 ## Development and checks
 
-Use JDK 21, Maven 3.9+, Node.js 22+, and PostgreSQL 17. The full Compose stack is the simplest way to exercise the real sign-in flow. Frontend development against that stack:
+Use JDK 21, Maven 3.9+, Node.js 24 with npm 11.19.1, and PostgreSQL 17. The full Compose stack is the simplest way to exercise the real sign-in flow. Frontend development against that stack:
 
 ```sh
 npm ci --prefix frontend
@@ -113,13 +137,19 @@ CI runs frontend checks, backend tests with PostgreSQL, container builds, authen
 
 ## Company deployment
 
-Use company-managed Keycloak and the [Kubernetes deployment guide](deploy/kubernetes/README.md). All data APIs, assets, and WebSocket upgrades require sign-in. There is no supported guest-mode bypass. OIDC tokens remain in server-managed HttpOnly cookies; app accounts use verified issuer/subject identity and board sessions are also bound to the Keycloak login session.
+Use company-managed Keycloak and the [Helm deployment guide](deploy/helm/README.md). All data APIs, assets, and WebSocket upgrades require sign-in. There is no supported guest-mode bypass. OIDC tokens remain in server-managed HttpOnly cookies; app accounts use verified issuer/subject identity and board sessions are also bound to the Keycloak login session.
+
+Keycloak is the documented SSO target and the provider used by the automated test suite; direct compatibility with other OIDC providers is not established. Kubernetes is the supplied company deployment template, not an application requirement. A production Compose configuration is not supplied.
+
+Private poker content is hidden from other participants, including the canvas owner, until publication. The application server and database administrators can access stored content: this is server-enforced privacy, not end-to-end encryption. Fonts are served locally and the supplied browser content policy restricts connections to the application origin. Operators manage HTTPS, database/backup encryption, access to infrastructure, and retention.
+
+An invitation grants editing membership. A public template can be copied by every user admitted to this deployment; making it private or deleting it later does not remove existing copies. There is no read-only sharing role or automatic canvas retention. Administrators with the Keycloak client role `team-canvas-admin` can deactivate users, anonymize identity while retaining canvases under `deleted_user_N`, delete a user and every owned canvas, or reassign retained canvases. Deletion affects shared canvases owned by that user too; unattributed drawings on other owners’ canvases remain. Deleting a canvas removes its live contents and invitations; database backups follow the operator's retention policy. Draft export is a recovery aid for the current page/draft, not a complete multi-page canvas backup.
 
 The application does not seed sample canvases. Published application images contain no canvas data or demo accounts; Alice and Bob belong to the development Keycloak realm only. Use a separate production database and company identity provider, without copying development/test volumes or importing the development realm.
 
 Run one backend replica with `Recreate` updates. The database ownership guard rejects overlapping backends; horizontal backend scaling is not supported. Define database backup, restore, monitoring, and retention procedures before admitting company data.
 
-The dashboard migration retains old scene rows but does not claim legacy guest canvases. Create new account-owned canvases after upgrading. Read the [upgrade notes](docs/upgrading.md) before using an existing database.
+The initial-development schema has been consolidated. An existing schema checksum mismatch fails startup safely; explicitly recreate only disposable development data when needed. Read the [upgrade notes](docs/upgrading.md) before using an existing database.
 
 ## Project structure
 
@@ -148,7 +178,7 @@ docker compose logs --tail=100 backend db frontend keycloak
 | Login redirect or issuer mismatch | Keep the app callback URLs aligned with `PUBLIC_ORIGIN`, the OIDC issuer aligned with `KEYCLOAK_PUBLIC_URL`, and saved Keycloak client URLs aligned with the app origin. |
 | Password changes do not take effect | Existing database/realm state is retained; update credentials administratively. |
 | Another backend owns the database | Stop that backend before starting this one. |
-| Access expired or revoked | Export unsaved work if needed, then rejoin/sign in. Membership survives ordinary session expiry; revoked members need a new invitation. |
+| Access expired or revoked | Export unsaved work if needed, then rejoin/sign in. Membership survives ordinary session expiry; removed members must have access restored by the canvas owner, even if they have a new invitation. |
 | Build downloads fail | Check DNS, network access, and build proxy settings. |
 
 ## Contributing
@@ -160,3 +190,11 @@ Never commit `.env`, access tokens, invitation secrets, or real deployment crede
 ## License
 
 [MIT](LICENSE). Third-party libraries, images, and fonts retain their own licenses and notices.
+
+## User administration
+
+The **User administration** link appears for users with the validated Keycloak client role `team-canvas-admin`. Company deployments must add this role to the configured client and assign it deliberately. Local development Alice has the role; Bob does not. Administrative access does not grant a private-poker inspection API.
+
+Deactivate removes access immediately and retains data. Reactivate requires a fresh SSO login. Anonymize is irreversible in the live database and preserves owned canvases under a non-login replacement owner. Delete permanently removes the account and all owned canvases/templates after an impact preview and typed confirmation, including shared work owned by that account. Backups and company logs follow their retention policy. Disable company Keycloak access as part of offboarding too.
+
+Set a stable, random `IDENTITY_BLOCKING_SECRET` of at least 32 characters in production; keep it outside the database. It protects irreversible identity-blocking fingerprints. During rotation retain previous verification keys through `TEAM_CANVAS_IDENTITY_BLOCKING_PREVIOUS_SECRETS` until their blocking records are retired. Losing these keys or restoring stale offboarding state can permit reprovisioning.

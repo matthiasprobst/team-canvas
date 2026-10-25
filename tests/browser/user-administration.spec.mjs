@@ -1,0 +1,72 @@
+import { test, expect } from '../../frontend/node_modules/playwright/test.mjs';
+import { api, base, login } from './helpers.mjs';
+
+test('client admin role controls lifecycle and anonymous retention differs from deletion', async ({ browser }, testInfo) => {
+  const admin = await browser.newContext({ baseURL: base });
+  const carol = await browser.newContext({ baseURL: base });
+  const dave = await browser.newContext({ baseURL: base });
+  const bob = await browser.newContext({ baseURL: base });
+  try {
+    const a = await admin.newPage(); const c = await carol.newPage(); const d = await dave.newPage(); const b = await bob.newPage();
+    const consoleErrors = [];
+    a.on('pageerror', error => consoleErrors.push(error.message));
+    await login(a, 'alice');
+    const initialUsers = await api(admin, '/api/admin/users?q=Carol%20Test', undefined, 'GET');
+    const initialCarol = initialUsers.items.find(user => user.displayName === 'Carol Test');
+    if (initialCarol?.status === 'deactivated') {
+      const preview = await api(admin, `/api/admin/users/${initialCarol.id}/impact`, undefined, 'GET');
+      await api(admin, `/api/admin/users/${initialCarol.id}/actions`, { action: 'reactivate', impactToken: preview.token, confirmation: '' });
+    }
+    await login(c, 'carol'); await login(d, 'dave'); await login(b, 'bob');
+    expect((await bob.request.get(base + '/api/admin/users', { headers: { 'X-Requested-With': 'JavaScript' } })).status()).toBe(403);
+    await b.getByRole('button', { name: /^Account:/ }).click();
+    await expect(b.getByRole('link', { name: 'User administration' })).toHaveCount(0);
+    const retained = await api(carol, '/api/boards', { name: `Retained Carol ${Date.now()}` });
+    const deleted = await api(dave, '/api/boards', { name: `Deleted Dave ${Date.now()}` });
+    const retainedInvite = await api(carol, `/api/boards/${retained.id}/invitations`, {});
+    const deletedInvite = await api(dave, `/api/boards/${deleted.id}/invitations`, {});
+    await api(bob, `/api/boards/${retained.id}/join`, { inviteKey: retainedInvite.inviteKey });
+    await api(bob, `/api/boards/${deleted.id}/join`, { inviteKey: deletedInvite.inviteKey });
+    await a.getByRole('button', { name: /^Account:/ }).click();
+    await a.getByRole('link', { name: 'User administration' }).click();
+    await expect(a.getByRole('heading', { name: 'User administration' })).toBeVisible();
+    await a.getByRole('button', { name: 'Manage Carol Test', exact: true }).click();
+    let dialog = a.getByRole('dialog', { name: 'Manage Carol Test' });
+    await expect(dialog.getByText(retained.name)).toBeVisible();
+    await dialog.getByRole('button', { name: 'Apply account action' }).click();
+    await expect(dialog).toHaveCount(0);
+    await api(carol, '/api/me', undefined, 'GET', 401);
+    await a.getByRole('button', { name: 'Manage Carol Test', exact: true }).click();
+    dialog = a.getByRole('dialog', { name: 'Manage Carol Test' });
+    await dialog.getByRole('button', { name: 'Apply account action' }).click();
+    await expect(dialog).toHaveCount(0);
+    await c.goto(base + '/api/oidc/logout');
+    await login(c, 'carol');
+    await a.getByRole('button', { name: 'Manage Carol Test', exact: true }).click();
+    dialog = a.getByRole('dialog', { name: 'Manage Carol Test' });
+    await dialog.getByRole('combobox', { name: 'Account action', exact: true }).selectOption('anonymize');
+    await dialog.getByLabel('Type ANONYMIZE to confirm', { exact: true }).fill('ANONYMIZE');
+    await a.screenshot({ path: testInfo.outputPath('admin-anonymize-desktop.png') });
+    await dialog.getByRole('button', { name: 'Apply account action' }).click();
+    await expect(dialog).toHaveCount(0);
+    const shared = await api(bob, '/api/boards?filter=shared', undefined, 'GET');
+    expect(shared.items.find(canvas => canvas.id === retained.id).owner.displayName).toMatch(/^deleted_user_/);
+    await api(carol, '/api/me', undefined, 'GET', 401);
+    await a.getByRole('button', { name: 'Manage Dave Test', exact: true }).click();
+    dialog = a.getByRole('dialog', { name: 'Manage Dave Test' });
+    await dialog.getByRole('combobox', { name: 'Account action', exact: true }).selectOption('delete');
+    await expect(dialog.getByText(/Every owned canvas and template/)).toBeVisible();
+    await dialog.getByLabel('Type DELETE to confirm', { exact: true }).fill('DELETE');
+    await dialog.getByRole('button', { name: 'Apply account action' }).click();
+    await expect(dialog).toHaveCount(0);
+    const after = await api(bob, '/api/boards?filter=shared', undefined, 'GET');
+    expect(after.items.some(canvas => canvas.id === deleted.id)).toBe(false);
+    expect(after.items.some(canvas => canvas.id === retained.id)).toBe(true);
+    const state = await api(admin, '/api/admin/offboarding-export', undefined, 'GET');
+    expect(state.records.length).toBeGreaterThanOrEqual(2);
+    expect(state.records.every(record => /^[a-f0-9]{64}$/.test(record.fingerprint))).toBe(true);
+    await a.setViewportSize({ width: 390, height: 844 });
+    await a.screenshot({ path: testInfo.outputPath('admin-mobile.png') });
+    expect(consoleErrors).toEqual([]);
+  } finally { await Promise.all([admin.close(), carol.close(), dave.close(), bob.close()]); }
+});

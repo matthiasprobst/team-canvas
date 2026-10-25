@@ -56,6 +56,7 @@ constructor(
         if (
             path != "api/boards" &&
                 !path.startsWith("api/boards/") &&
+                !path.startsWith("api/admin/") &&
                 path !in setOf("api/me", "api/logout")
         )
             return
@@ -68,7 +69,7 @@ constructor(
             throw ClientException("forbidden", "Request from an untrusted origin rejected.")
         val client = Security.hash(identity.issuer + "\n" + identity.subject)
         limits.require("http:$client", 240, 60_000)
-        if (context.method == "POST" && !path.endsWith("/invitations"))
+        if (context.method == "POST" && (path == "api/boards" || path.endsWith("/join") || path.endsWith("/start-template")))
             limits.require("join:$client", 30, 60_000)
     }
 }
