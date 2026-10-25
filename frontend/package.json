@@ -28,7 +28,7 @@
     "@vitejs/plugin-react": "^6.1.2",
     "playwright": "1.56.1",
     "typescript": "~7.0.2",
-    "vite": "^8.3.4",
+    "vite": "^8.3.5",
     "@tailwindcss/vite": "^4.3.3",
     "tailwindcss": "^4.3.3"
   },
