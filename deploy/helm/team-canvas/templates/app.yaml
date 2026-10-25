@@ -144,6 +144,26 @@ spec:
             matchLabels: {app: {{ .Release.Name }}-frontend}
       ports: [{protocol: TCP, port: 8080}]
 
+{{- if .Values.monitoring.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: {{ .Release.Name }}-metrics}
+spec:
+  podSelector:
+    matchLabels: {app: {{ .Release.Name }}-backend}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+{{ toYaml .Values.monitoring.namespaceLabels | indent 14 }}
+          podSelector:
+            matchLabels:
+{{ toYaml .Values.monitoring.podLabels | indent 14 }}
+      ports: [{protocol: TCP, port: 8080}]
+{{- end }}
+
 ---
 apiVersion: v1
 kind: ConfigMap

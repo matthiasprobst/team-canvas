@@ -18,3 +18,18 @@ Keep exactly one backend (Recreate); health/metrics are internal. Restrict front
 Initial-development schema can be recreated only with an explicit reset of disposable data. Startup never cleans a mismatched schema. Historical migrations are not a supported production upgrade path yet. See the operations runbook for recovery and release qualification.
 
 The admin screen exposes a download of keyed offboarding recovery state. Retain it outside PostgreSQL after every irreversible lifecycle operation and preserve the original identity-blocking key ring. See the operations runbook before a restore.
+
+## Internal metrics
+
+Metrics remain unavailable through the public Caddy/Ingress route. To allow the company Prometheus pods to scrape the backend Service on port 8080 at `/q/metrics`, enable the optional policy with **both** label selectors:
+
+```yaml
+monitoring:
+  enabled: true
+  namespaceLabels:
+    kubernetes.io/metadata.name: monitoring
+  podLabels:
+    app.kubernetes.io/name: prometheus
+```
+
+The namespace and pod selectors are combined in a single NetworkPolicy peer; both must match. Empty selectors are rejected when enabled. Set labels to the actual managed Prometheus pods and configure its scrape target separately; this chart does not install a monitoring operator or ServiceMonitor. NetworkPolicy controls port access, so selected trusted scrapers can reach other backend HTTP paths too. Monitoring is disabled by default. Validate this with your CNI and any additional namespace policies; NetworkPolicy allows from separate policies are additive. Run `bash tests/helm/check.sh` to check default isolation, selector validation and digest requirements.

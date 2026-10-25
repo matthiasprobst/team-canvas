@@ -15,3 +15,9 @@ limits:
   maxOwnedCanvasesPerUser: 20
 # Render/run migration Job separately while the backend is stopped.
 runMigration: false
+# Optional internal Prometheus access. Both selectors must be non-empty when enabled.
+# This creates a separate NetworkPolicy; /q remains unavailable through Caddy/ingress.
+monitoring:
+  enabled: false
+  namespaceLabels: {}
+  podLabels: {}

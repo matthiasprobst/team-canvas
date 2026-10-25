@@ -82,6 +82,55 @@
           "maximum": 2147483647
         }
       }
+    },
+    "monitoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "namespaceLabels",
+        "podLabels"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "namespaceLabels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "podLabels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "namespaceLabels": {
+                "minProperties": 1
+              },
+              "podLabels": {
+                "minProperties": 1
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }
