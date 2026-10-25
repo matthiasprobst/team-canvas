@@ -74,8 +74,7 @@ jobs:
               image: team-canvas-frontend
           IMAGES
           export COMPOSE_FILE=docker-compose.yml:/tmp/team-canvas-ci-images.yaml
-          docker compose up --no-build -d --wait db keycloak
-          docker compose run --rm --no-deps backend migrate
+          # Exercise the same automatic migration path as development up --build.
           docker compose up --no-build -d --wait --wait-timeout 300
           node tests/smoke.mjs
           npm run test:e2e --prefix frontend

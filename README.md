@@ -53,6 +53,8 @@ docker compose run --rm --no-deps backend migrate
 docker compose up -d --wait --wait-timeout 300
 ```
 
+For subsequent development starts, `docker compose up --build -d --wait --wait-timeout 300` also applies pending migrations automatically, validating existing migration checksums first. An incompatible migration history still stops startup; existing volumes are never reset. Company deployments continue to use the separate migration procedure in the operator handover.
+
 Open **http://localhost:8088** and choose **Login with SSO**. The browser signs in through the separate development Keycloak URL at **http://localhost:8180/auth**. Compose includes a development realm with these example accounts:
 
 | Username | Default development password |
