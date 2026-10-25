@@ -14,7 +14,7 @@ data class PatchEvent(
 data class RoundEvent(val board: BoardState, val round: RoundState?, val type: String = "round") : ServerEvent
 data class MetadataEvent(val name: String, val type: String = "metadata") : ServerEvent
 data class PresenceMember(val id: UUID, val name: String, val role: String)
-data class PresenceEvent(val participants: List<PresenceMember>, val type: String = "presence") : ServerEvent
+data class PresenceEvent(val participants: List<PresenceMember>, val connections: Int = participants.size, val type: String = "presence") : ServerEvent
 data class CursorEvent(val id: UUID, val x: Double, val y: Double, val type: String = "cursor") : ServerEvent
 data class PongEvent(val type: String = "pong") : ServerEvent
 data class ErrorEvent(val commandId: String?, val code: String, val message: String, val type: String = "error") : ServerEvent

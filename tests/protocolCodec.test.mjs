@@ -30,3 +30,9 @@ test('all shared protocol fixtures pass the production decoder', () => {
     assert.deepEqual(parseServerEvent(JSON.stringify({ type: 'snapshot', data: snapshot(poker) })).data, snapshot(poker));
   }
 });
+
+test('presence distinguishes people from occupied connections and rejects impossible counts', () => {
+  const packet = { type: 'presence', participants: [{ id: 'p', name: 'One person', role: 'guest' }], connections: 3 };
+  assert.deepEqual(parseServerEvent(JSON.stringify(packet)), packet);
+  for (const connections of [0, 11, -1, 1.5]) assert.throws(() => parseServerEvent(JSON.stringify({ ...packet, connections })));
+});

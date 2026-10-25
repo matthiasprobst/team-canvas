@@ -10,6 +10,8 @@ import CanvasSwitcher from "./CanvasSwitcher";
 import { Modal, ShareDialog } from "./ui";
 import { useBoardNavigation } from "./useBoardNavigation";
 import PageControls from "./PageControls";
+import CanvasStorageDialog from "./CanvasStorageDialog";
+import { ConfirmDialog } from "./Dialog";
 
 export default function BoardEditor({ boardId, identity, user }: { boardId: string; identity: Identity; user: Account }) {
   const locationState = useLocation().state as { dashboard?: string } | null;
@@ -17,6 +19,7 @@ export default function BoardEditor({ boardId, identity, user }: { boardId: stri
   const {
     view,
     people,
+    connections,
     deleted,
     editorRef,
     onChange,
@@ -30,6 +33,8 @@ export default function BoardEditor({ boardId, identity, user }: { boardId: stri
   const { snapshot, online, error } = view;
   const [switching, setSwitching] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [storage, setStorage] = useState(false);
+  const [confirmReveal, setConfirmReveal] = useState(false);
   const sticky = () => {
     const editor = editorRef.current;
     if (!editor || !editable) return;
@@ -110,6 +115,10 @@ export default function BoardEditor({ boardId, identity, user }: { boardId: stri
       {sharing && (
         <ShareDialog id={boardId} name={snapshot?.board.name ?? "canvas"} close={() => setSharing(false)} />
       )}
+      {storage && <CanvasStorageDialog id={boardId} close={() => setStorage(false)} />}
+      {confirmReveal && <ConfirmDialog title="Stop poker and reveal?" label="Reveal saved contributions" close={() => setConfirmReveal(false)} action={() => control("stop_round")}>
+        <p>All saved private contributions will become visible to every member. Wait for Saved before revealing.</p>
+      </ConfirmDialog>}
       <header className="editor-navbar">
         <div className="navbar-main">
           <div className="navbar-identity">
@@ -139,9 +148,13 @@ export default function BoardEditor({ boardId, identity, user }: { boardId: stri
                 <span>Share</span>
               </button>
             )}
-            <button className="nav-button switch-canvas" onClick={() => setSwitching(true)}>
-              Switch canvas
-            </button>
+            <details className="canvas-action-menu shell">
+              <summary className="nav-button">Canvas actions</summary>
+              <div className="canvas-action-items">
+                <button className="menu-item" onClick={event => { event.currentTarget.closest("details")?.removeAttribute("open"); setSwitching(true); }}>Switch canvas</button>
+                {isHost && !deleted && <button className="menu-item" onClick={event => { event.currentTarget.closest("details")?.removeAttribute("open"); setStorage(true); }}>Storage</button>}
+              </div>
+            </details>
           </div>
           <AccountMenu user={user} />
         </div>
@@ -177,9 +190,7 @@ export default function BoardEditor({ boardId, identity, user }: { boardId: stri
               </button>
             )}
             {poker && (
-              <button className="primary-action" disabled={!online || view.busy} onClick={() => {
-                if (confirm("Stop poker and reveal all saved contributions to everyone?")) control("stop_round");
-              }}>
+              <button className="primary-action" disabled={!online || view.busy} onClick={() => setConfirmReveal(true)}>
                 Stop poker and reveal
               </button>
             )}
@@ -203,7 +214,7 @@ export default function BoardEditor({ boardId, identity, user }: { boardId: stri
       )}
       <div className="sidebar">
         <span>
-          <b>{people.length}/10</b> active
+          <b>{people.length}</b> {people.length === 1 ? "person" : "people"} · <b>{connections}/10</b> connections
         </span>
         {people.map((person) => (
           <span key={person.id} className="pill">

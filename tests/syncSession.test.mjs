@@ -90,6 +90,19 @@ test('reconnect retries the identical command ID and keeps unsent edits', () => 
   assert.equal(session.view().elements[0].x, 2);
 });
 
+test('storage cleanup preserves unacknowledged edits for export instead of replaying them into a new epoch', () => {
+  const { session, sent } = client();
+  session.localChange([box('public'), box('pending')], {});
+  session.flush();
+  const cleaned = snapshot(); cleaned.board.epoch = 1; cleaned.board.revision = 2;
+  session.receive({ type: 'snapshot', data: cleaned });
+  session.flush();
+  assert.equal(sent.length, 1);
+  assert.equal(session.view().unsaved, false);
+  assert.equal(session.view().recovery[0].id, 'pending');
+  assert.equal(session.view().elements.some(element => element.id === 'pending'), false);
+});
+
 test('a duplicate receipt after reconnect reveals the canonical snapshot', () => {
   const { session, sent } = client();
   session.localChange([box('public', 1)], {}); session.flush();

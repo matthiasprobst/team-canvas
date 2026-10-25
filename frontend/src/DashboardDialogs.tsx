@@ -71,7 +71,7 @@ export default function DashboardDialogs({
         />
       )}
       {dialog?.type === "share" && (
-        <ShareDialog id={dialog.canvas.id} name={dialog.canvas.name} close={close} />
+        <ShareDialog id={dialog.canvas.id} name={dialog.canvas.name} close={() => { close(); refresh(); }} />
       )}
       {dialog?.type === "tags" && (
         <TagDialog

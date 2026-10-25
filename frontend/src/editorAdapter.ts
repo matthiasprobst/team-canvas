@@ -13,6 +13,7 @@ export class EditorAdapter {
   private renderedFiles = new Set<string>();
   private lastMode: string | undefined;
   private lastPageId: string | undefined;
+  private lastEpoch: number | undefined;
   private cursors = new Map<string, { x: number; y: number }>();
   private people: Presence[] = [];
 
@@ -24,6 +25,9 @@ export class EditorAdapter {
     const encoded = JSON.stringify(next.elements.map(elementFingerprint));
     this.applying = true;
     try {
+      const epoch = next.snapshot?.board.epoch;
+      if (epoch !== undefined && this.lastEpoch !== undefined && epoch !== this.lastEpoch) editor.history.clear();
+      this.lastEpoch = epoch;
       const files = Object.values(next.files).filter((file) => force || !this.renderedFiles.has(file.id));
       if (files.length) {
         editor.addFiles(files as Parameters<ExcalidrawImperativeAPI["addFiles"]>[0]);

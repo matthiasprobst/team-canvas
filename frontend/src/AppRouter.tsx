@@ -100,7 +100,8 @@ function CanvasRoute() {
 function Join({ id }: { id: string }) {
   const user = useOutletContext<Account>();
   const [identity, setIdentity] = useState<Identity | null>(null);
-  const [invite] = useState(() => sessionStorage.getItem(`invitation:${id}`));
+  const [invite, setInvite] = useState(() => sessionStorage.getItem(`invitation:${id}`));
+  const [invalidInvite, setInvalidInvite] = useState(false);
   const [preview, setPreview] = useState<{ name: string; ownerName: string } | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -121,8 +122,10 @@ function Join({ id }: { id: string }) {
         .catch((e) => {
           if (active) {
             setError(errorMessage(e));
-            if (e instanceof ApiError && [400, 404].includes(e.status))
+            if (e instanceof ApiError && [400, 404].includes(e.status)) {
               sessionStorage.removeItem(`invitation:${id}`);
+              setInvalidInvite(true);
+            }
           }
         });
     else
@@ -185,7 +188,14 @@ function Join({ id }: { id: string }) {
           <p role="alert" className="error">
             {error}
           </p>
-          <button className="button" onClick={() => setRetry((n) => n + 1)}>
+          <button className="button" onClick={() => {
+            if (invalidInvite) {
+              setInvite(null);
+              setPreview(null);
+              setInvalidInvite(false);
+            }
+            setRetry((n) => n + 1);
+          }}>
             Retry
           </button>
           <button className="button ml-2" onClick={signIn}>

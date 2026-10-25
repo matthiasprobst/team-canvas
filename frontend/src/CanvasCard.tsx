@@ -18,7 +18,7 @@ export default function CanvasCard({
   const menuRef = useRef<HTMLDetailsElement>(null);
   const navigate = useNavigate();
   return (
-    <article className="group relative rounded-xl border border-slate-200 bg-white p-6 hover:border-blue-300 transition-colors">
+    <article className="group relative min-w-0 rounded-xl border border-slate-200 bg-white p-6 hover:border-blue-300 transition-colors">
       <div className="flex justify-between gap-3">
         <span className="flex items-center justify-center rounded-lg w-10 h-10 bg-blue-50 text-blue-600">
           <PanelsTopLeft size={21} />

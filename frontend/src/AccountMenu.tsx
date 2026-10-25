@@ -50,6 +50,7 @@ export default function AccountMenu({ user }: { user: Account }) {
       {open && (
         <nav id={panelId} className="account-dropdown" aria-label="Account">
           <p className="account-name">{user.displayName}</p>
+          <p className="account-reference" title={user.id}>{user.username ? `@${user.username} · ` : ""}Account {user.id.slice(0, 8)}</p>
           {user.admin && (
             <Link className="account-link" to="/admin" onClick={() => setOpen(false)}>
               <UsersRound size={16} aria-hidden="true" />

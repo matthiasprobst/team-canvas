@@ -1,6 +1,8 @@
 # Initial-development database changes
 
-The schema is consolidated into V1 while this project is in initial development, as agreed with the repository owner. Historical migration compatibility is not provided. Existing databases with old checksums fail validation safely; startup never resets them.
+The initial-development schema was consolidated into V1, as agreed with the repository owner. Databases created from the current V1 baseline can now apply forward migrations. Databases with older consolidated V1 checksums still fail validation safely; startup never resets them.
+
+V2 adds optional verified SSO usernames and canvas access history without changing existing memberships or drawing data. Usernames populate on the next authenticated account check. Older actions have no fabricated history. Stop the backend, back up retained data, and run the standalone `backend migrate` command using migration credentials before starting the matching application images. Ensure runtime grants and default privileges include the new `canvas_access_events` table and its identity sequence.
 
 Export or back up anything needed before deliberately recreating **disposable development** data. Never copy test/development volumes into a company deployment. No automatic reset or `flyway repair` is an upgrade procedure. Do not run two backends against one database.
 

@@ -77,7 +77,7 @@ constructor(
                 existingElements.keys.plus(elements.map { it.path("id").asText() }).size > BoardLimits.ELEMENTS ||
                     existingAssets.keys.plus(files.keys).size > BoardLimits.ASSETS
             )
-                throw ClientException("limit", "Canvas element limit reached.")
+                throw ClientException("limit", "Canvas element limit reached. Ask the owner to clean up deleted content in Canvas actions → Storage.")
             val sceneBytes =
                 existingElements
                     .toMutableMap()
@@ -100,7 +100,7 @@ constructor(
                     .values
                     .sum()
             if (sceneBytes > BoardLimits.SCENE_BYTES || fileBytes > BoardLimits.ASSET_BYTES)
-                throw ClientException("limit", "Canvas storage limit reached.")
+                throw ClientException("limit", "Canvas storage limit reached. Ask the owner to clean up deleted content in Canvas actions → Storage.")
             if (
                 files.keys.any { id ->
                     elements.none {

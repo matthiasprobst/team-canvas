@@ -161,6 +161,7 @@ constructor(
             accounts.requireLogin(c, user.id, identity.sid)
             access.requireOwner(c, id, user)
             c.update("UPDATE boards SET template_visibility=? WHERE id=?", visibility, id)
+            recordAccess(c, id, user.id, if (visibility == "public") "template_published" else "template_private")
         }
     }
 
@@ -171,6 +172,7 @@ constructor(
             accounts.requireLogin(c, user.id, identity.sid)
             access.requireOwner(c, id, user)
             c.update("UPDATE boards SET template_visibility=NULL WHERE id=?", id)
+            recordAccess(c, id, user.id, "template_unpublished")
         }
     }
 

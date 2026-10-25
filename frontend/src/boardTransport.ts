@@ -86,14 +86,20 @@ export class BoardTransport {
         if (stopped || this.socket !== socket) return;
         callbacks.disconnected(
           rejectionMessage ??
-            (event.code === 1008
+            (event.code === 1008 && event.reason === "Access revoked"
+              ? "Your access to this canvas was removed by its owner."
+              : event.code === 1008 && ["login_expired", "Login expired"].includes(event.reason)
+              ? "Your sign-in session expired. Reconnecting…"
+              : event.code === 1008
               ? "Access expired, was revoked, or the room is full. Please rejoin."
               : undefined)
         );
-        if (!canvasDeleted && (event.code === 1008 || event.code === 1006))
+        if (!canvasDeleted && event.code === 1006)
           void checkCompanySession().catch(() => {});
-        if (!canvasDeleted && event.code === 1008 && event.reason === "Login expired")
-          void checkCompanySession().then(() => { if (!stopped) retry = setTimeout(connect, 300); }).catch(() => {});
+        if (!canvasDeleted && event.code === 1008 && ["login_expired", "Login expired"].includes(event.reason))
+          void checkCompanySession()
+            .then(() => { if (!stopped) retry = setTimeout(connect, 300); })
+            .catch(() => { if (!stopped) callbacks.disconnected("Please sign in again to continue. Export unsaved work before reloading."); });
         if (!canvasDeleted && event.code !== 1008)
           retry = setTimeout(connect, Math.min(15_000, 1000 * 2 ** failures++) + Math.random() * 400);
       });

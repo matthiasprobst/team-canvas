@@ -51,8 +51,8 @@ test('private templates stay owner-only and public templates start independent c
     await a.getByRole('button', { name: 'Template settings', exact: true }).click();
     const publicSettings = a.getByRole('dialog', { name: 'Template settings' });
     await publicSettings.getByLabel('Who can find and start this template?').selectOption('public');
-    a.once('dialog', dialog => dialog.accept());
     await publicSettings.getByRole('button', { name: 'Save settings' }).click();
+    await a.getByRole('dialog', { name: 'Publish public template?' }).getByRole('button', { name: 'Publish template' }).click();
 
     await b.reload();
     await b.getByRole('link', { name: 'Templates', exact: true }).click();
@@ -82,6 +82,7 @@ test('private templates stay owner-only and public templates start independent c
     bobCopy = { id: bobPath.split('/').at(-1) };
     expect(bobCopy.id).not.toBe(source.id);
     await expect.poll(async () => (await api(bob, '/api/boards?filter=mine&q=planning', undefined, 'GET')).items.some(canvas => canvas.id === bobCopy.id && canvas.name === copyName && canvas.templateVisibility == null && canvas.tags.includes('planning'))).toBe(true);
+    await b.locator('.canvas-action-menu summary').click();
     await b.getByRole('button', { name: 'Switch canvas', exact: true }).click();
     const switcher = b.getByRole('dialog', { name: 'Switch canvas' });
     await switcher.getByLabel('Search canvases or tags').fill('planning');

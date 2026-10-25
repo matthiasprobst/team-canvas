@@ -76,8 +76,10 @@ export function parseServerEvent(text: string): ServerEvent {
       break;
     case "presence":
       valid =
+        integer(value.connections) && (value.connections as number) <= 10 &&
         Array.isArray(value.participants) &&
         value.participants.length <= 10 &&
+        value.participants.length <= (value.connections as number) &&
         value.participants.every(
           (person) =>
             object(person) &&

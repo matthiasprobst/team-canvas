@@ -55,6 +55,78 @@ class BoardStoreIntegrationTest {
             }
     }
 
+    @Test
+    fun `storage cleanup releases deleted object capacity and rejects stale writes and unauthorized cleanup`() {
+        val room = room()
+        val repository = BoardRepository(dataSource)
+        val storage = CanvasStorage(repository, accounts, access)
+        val before = context(room.host)
+        dataSource.connection.use { c ->
+            c.prepareStatement("""INSERT INTO elements(board_id,id,page_id,body,scope,stored_bytes)
+                SELECT ?, 'deleted-'||n, ?, jsonb_build_object('id','deleted-'||n,'type','rectangle','x',0,'y',0,'width',10,'height',10,'isDeleted',true),'public',100
+                FROM generate_series(1,4000) n""").use {
+                it.setObject(1, room.board.id); it.setObject(2, before.pageId); it.executeUpdate()
+            }
+            c.update("INSERT INTO assets(board_id,id,page_id,body,scope,stored_bytes) VALUES(?,'unused',?,'{}','public',100)", room.board.id, before.pageId)
+        }
+        assertEquals(4000L, storage.inspect(room.board.id, room.owner).deletedElements)
+        error("not_found") { storage.compact(room.board.id, room.visitor) }
+        error("limit") { store.patch(room.host, before, listOf(shape("new")), emptyMap()) }
+        val cleaned = storage.compact(room.board.id, room.owner)
+        assertEquals(0L, cleaned.deletedElements)
+        assertEquals(0L, cleaned.unusedImages)
+        assertEquals(0L, cleaned.imageBytes)
+        error("stale_round") { store.patch(room.guest, before, listOf(shape("deleted-1")), emptyMap()) }
+        assertTrue(store.snapshot(room.host).elements.isEmpty())
+        store.patch(room.host, context(room.host), listOf(shape("new")), emptyMap())
+        assertEquals("new", store.snapshot(room.guest).elements.single().path("id").asText())
+        rounds.start(room.host, context(room.host))
+        error("locked") { storage.compact(room.board.id, room.owner) }
+        error("locked") { storage.inspect(room.board.id, room.owner) }
+    }
+
+    @Test
+    fun `membership labels reflect disabled accounts and access history is owner only`() {
+        val room = room()
+        val memberId = accounts.current(room.visitor).id
+        dataSource.connection.use { it.update("UPDATE app_users SET status='deactivated' WHERE id=?", memberId) }
+        assertEquals("deactivated", access.members(room.board.id, room.owner).items.single { it.id == room.guest.id }.accountStatus)
+        access.setMemberAccess(room.board.id, room.guest.id, true, room.owner)
+        access.setMemberAccess(room.board.id, room.guest.id, true, room.owner)
+        access.setMemberAccess(room.board.id, room.guest.id, false, room.owner)
+        val history = access.history(room.board.id, room.owner)
+        assertEquals(listOf("member_restored", "member_removed"), history.map { it.action })
+        assertEquals(memberId, history.first().targetId)
+        val stranger = user()
+        error("not_found") { access.history(room.board.id, stranger) }
+    }
+
+    @Test
+    fun `public template publication is visible to owners and can be made private after member removal`() {
+        val room = room()
+        catalog.markTemplate(room.board.id, "public", room.owner)
+        access.setMemberAccess(room.board.id, room.guest.id, true, room.owner)
+        assertEquals("public", access.members(room.board.id, room.owner).templateVisibility)
+        catalog.startTemplate(room.board.id, "Public copy", room.visitor)
+        catalog.markTemplate(room.board.id, "private", room.owner)
+        error("not_found") { catalog.startTemplate(room.board.id, "Blocked copy", room.visitor) }
+        assertEquals("private", access.members(room.board.id, room.owner).templateVisibility)
+    }
+
+    @Test
+    fun `unchanged accounts do not rewrite profiles and revoked logins cannot be reactivated`() {
+        val identity = user().copy(username = "stable-user")
+        val account = accounts.current(identity)
+        fun version() = dataSource.connection.use { c -> c.query("SELECT xmin::text FROM app_users WHERE id=?", account.id) { it.next(); it.getString(1) } }
+        val original = version()
+        repeat(3) { assertEquals("stable-user", accounts.current(identity).username) }
+        assertEquals(original, version())
+        assertEquals("Updated", accounts.current(identity.copy(name = "Updated")).displayName)
+        assertNotEquals(original, version())
+        accounts.logout(identity)
+        error("unauthorized") { accounts.current(identity) }
+    }
+
 
     @Test
     fun `configured quotas reject concurrent ownership growth and excess pages without deleting data`() {
@@ -485,6 +557,8 @@ class BoardStoreIntegrationTest {
         error("unauthorized") { access.authenticate(room.board.id, second.token, secondLogin) }
         error("not_found") { access.join(room.board.id, JoinRequest(room.inviteKey), outsider) }
         val newKey = access.invite(room.board.id, room.owner).getValue("inviteKey")
+        error("not_found") { access.join(room.board.id, JoinRequest(newKey), secondLogin) }
+        access.setMemberAccess(room.board.id, room.guest.id, false, room.owner)
         assertEquals(
             room.guest.id,
             access.join(room.board.id, JoinRequest(newKey), secondLogin).participantId,
@@ -514,6 +588,95 @@ class BoardStoreIntegrationTest {
         access.revoke(room.board.id, room.owner, false)
         assertNotNull(access.authenticate(room.board.id, tab.token, room.visitor))
         error("not_found") { access.preview(room.board.id, anotherKey, room.visitor) }
+    }
+
+    @Test
+    fun `only the owner can list and manage members of the specified canvas`() {
+        val room = room()
+        access.join(room.board.id, JoinRequest(), room.visitor)
+        val members = access.members(room.board.id, room.owner).items
+        assertEquals(2, members.size)
+        assertEquals("owner", members.first().role)
+        assertEquals(room.host.id, members.first().id)
+        assertEquals("member", members.last().role)
+        assertEquals(room.guest.id, members.last().id)
+        assertFalse(members.last().revoked)
+        for (actor in listOf(room.visitor, user("Outsider"))) {
+            error("not_found") { access.members(room.board.id, actor) }
+            error("not_found") { access.setMemberAccess(room.board.id, room.guest.id, true, actor) }
+            error("not_found") { access.setMemberAccess(room.board.id, room.guest.id, false, actor) }
+        }
+        for (revoked in listOf(true, false)) {
+            error("bad_request") { access.setMemberAccess(room.board.id, room.host.id, revoked, room.owner) }
+        }
+        val another = room()
+        error("not_found") { access.setMemberAccess(room.board.id, another.guest.id, true, room.owner) }
+        error("not_found") { access.setMemberAccess(room.board.id, UUID.randomUUID(), false, room.owner) }
+        assertNotNull(access.authenticate(another.board.id, another.guestToken, another.visitor))
+    }
+
+    @Test
+    fun `individual removal revokes every session and restoration never revives old tokens`() {
+        val room = room()
+        val tabLogin = room.visitor.copy(sid = UUID.randomUUID().toString())
+        val tab = access.join(room.board.id, JoinRequest(), tabLogin)
+        val colleague = user("Colleague")
+        val colleagueSession = access.join(room.board.id, JoinRequest(room.inviteKey), colleague)
+        val other = access.create("Unaffected canvas", room.visitor)
+        val otherSession = access.join(other.id, JoinRequest(), room.visitor)
+        repeat(2) { access.setMemberAccess(room.board.id, room.guest.id, true, room.owner) }
+        assertTrue(access.members(room.board.id, room.owner).items.single { it.id == room.guest.id }.revoked)
+        error("unauthorized") { access.authenticate(room.board.id, room.guestToken, room.visitor) }
+        error("unauthorized") { access.authenticate(room.board.id, tab.token, tabLogin) }
+        error("not_found") { access.join(room.board.id, JoinRequest(), room.visitor) }
+        error("not_found") { access.join(room.board.id, JoinRequest(room.inviteKey), room.visitor) }
+        val freshKey = access.invite(room.board.id, room.owner).getValue("inviteKey")
+        error("not_found") { access.join(room.board.id, JoinRequest(freshKey), room.visitor) }
+        assertTrue(catalog.list(room.visitor, "shared", "", "recent", 24, null).items.none { it.id == room.board.id })
+        assertNotNull(access.authenticate(room.board.id, colleagueSession.token, colleague))
+        assertNotNull(access.authenticate(other.id, otherSession.token, room.visitor))
+        assertNotNull(access.preview(room.board.id, room.inviteKey, colleague))
+        repeat(2) { access.setMemberAccess(room.board.id, room.guest.id, false, room.owner) }
+        error("unauthorized") { access.authenticate(room.board.id, room.guestToken, room.visitor) }
+        error("unauthorized") { access.authenticate(room.board.id, tab.token, tabLogin) }
+        val restored = access.join(room.board.id, JoinRequest(), room.visitor)
+        assertEquals(room.guest.id, restored.participantId)
+        assertNotEquals(room.guestToken, restored.token)
+        assertNotNull(access.authenticate(room.board.id, restored.token, room.visitor))
+        assertTrue(catalog.list(room.visitor, "shared", "", "recent", 24, null).items.any { it.id == room.board.id })
+    }
+
+    @Test
+    fun `removal during poker preserves saved contributions and prevents further commands`() {
+        val room = room()
+        rounds.start(room.host, context(room.host))
+        store.patch(room.guest, context(room.guest), listOf(shape("saved-private")), emptyMap())
+        access.setMemberAccess(room.board.id, room.guest.id, true, room.owner)
+        assertTrue(store.snapshot(room.host).elements.isEmpty())
+        error("unauthorized") { store.patch(room.guest, context(room.guest), listOf(shape("late")), emptyMap()) }
+        error("unauthorized") { rounds.stop(room.guest, context(room.guest)) }
+        rounds.stop(room.host, context(room.host))
+        assertEquals(listOf("saved-private"), store.snapshot(room.host).elements.map { it.path("id").asText() })
+    }
+
+    @Test
+    fun `concurrent rejoin and removal cannot leave an active membership or token`() {
+        val room = room()
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val joined = executor.submit<JoinedBoard?> {
+                try { access.join(room.board.id, JoinRequest(room.inviteKey), room.visitor) }
+                catch (error: ClientException) { assertEquals("not_found", error.code); null }
+            }
+            val removed = executor.submit { access.setMemberAccess(room.board.id, room.guest.id, true, room.owner) }
+            val session = joined.get()
+            removed.get()
+            if (session != null) error("unauthorized") { access.authenticate(room.board.id, session.token, room.visitor) }
+            error("not_found") { access.join(room.board.id, JoinRequest(room.inviteKey), room.visitor) }
+            assertTrue(access.members(room.board.id, room.owner).items.single { it.id == room.guest.id }.revoked)
+        } finally {
+            executor.shutdownNow()
+        }
     }
 
     @Test

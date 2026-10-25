@@ -23,6 +23,7 @@ const initialView: SessionView = {
 export function useBoardSession(boardId: string, identity: Identity) {
   const [view, setView] = useState<SessionView>(initialView);
   const [people, setPeople] = useState<Presence[]>([]);
+  const [connections, setConnections] = useState(0);
   const [deleted, setDeleted] = useState(false);
   const [transport] = useState(() => new BoardTransport());
   const [adapter] = useState(() => new EditorAdapter(identity.participantId));
@@ -38,7 +39,12 @@ export function useBoardSession(boardId: string, identity: Identity) {
     () =>
       transport.start(boardId, identity, {
         flush: () => controller.flush(),
-        disconnected: (message) => controller.disconnected(message),
+        disconnected: (message) => {
+          setPeople([]);
+          setConnections(0);
+          adapter.presence([]);
+          controller.disconnected(message);
+        },
         receive: (packet) => {
           if (packet.type === "error" && packet.code === "canvas_deleted") {
             setDeleted(true);
@@ -47,6 +53,7 @@ export function useBoardSession(boardId: string, identity: Identity) {
             controller.disconnected(packet.message);
           } else if (packet.type === "presence") {
             setPeople(packet.participants);
+            setConnections(packet.connections);
             adapter.presence(packet.participants);
           } else if (packet.type === "cursor") {
             adapter.cursor(packet.id, packet.x, packet.y);
@@ -90,6 +97,7 @@ export function useBoardSession(boardId: string, identity: Identity) {
   return {
     view,
     people,
+    connections,
     deleted,
     editorRef: adapter.editorRef,
     onChange,

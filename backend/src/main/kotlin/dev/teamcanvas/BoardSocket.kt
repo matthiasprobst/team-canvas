@@ -112,7 +112,7 @@ constructor(
         try {
             writer.requireOwner()
             if (System.currentTimeMillis() >= peer.authExpiresAt)
-                throw ClientException("unauthorized", "Sign-in session expired.")
+                throw ClientException("login_expired", "Your sign-in session expired. Reconnecting…")
             limits.require("socket:${session.id}", 60)
             val bytes = text.toByteArray(Charsets.UTF_8).size
             if (bytes > BoardLimits.MESSAGE_BYTES) throw ClientException("too_large", "Message too large.")
@@ -225,7 +225,7 @@ constructor(
                 peer,
                 ErrorEvent(commandId, error.code, error.message),
             )
-            if (error.code in setOf("unauthorized", "room_full", "protocol_version"))
+            if (error.code in setOf("unauthorized", "login_expired", "room_full", "protocol_version"))
                 peer.closeAfterDrain(1008, error.code)
             if (error.code == "unavailable" || (error.code == "rate_limit" && commandId == null))
                 peer.closeAfterDrain(1013, error.code)
@@ -274,7 +274,7 @@ constructor(
                 .distinctBy { it.id }
                 .map { PresenceMember(it.id, it.name, it.role) }
         audience(id).forEach {
-            send(it, PresenceEvent(participants))
+            send(it, PresenceEvent(participants, audience(id).size))
         }
     }
 
@@ -333,6 +333,12 @@ constructor(
             name
         }
 
+    fun <T> refresh(id: UUID, action: () -> T): T = synchronized(lock(id)) {
+        val result = action()
+        audience(id).forEach { snapshot(it) }
+        result
+    }
+
     fun delete(id: UUID, action: () -> Unit) =
         synchronized(lock(id)) {
             action()
@@ -356,11 +362,19 @@ constructor(
                 .forEach { it.close(1008, "Access revoked") }
         }
 
+    fun memberAccess(id: UUID, memberId: UUID, revoked: Boolean, action: () -> Unit) =
+        synchronized(lock(id)) {
+            action()
+            if (revoked) audience(id)
+                .filter { it.participant?.id == memberId }
+                .forEach { it.close(1008, "Access revoked") }
+        }
+
     private fun sweep() {
         for (peer in peers.values) {
             try {
                 val now = System.currentTimeMillis()
-                if (now >= peer.authExpiresAt) peer.close(1008, "Login expired")
+                if (now >= peer.authExpiresAt) peer.close(1008, "login_expired")
                 else if (peer.participant == null && now - peer.openedAt > 10_000)
                     peer.close(1008, "Authentication timeout")
                 else if (peer.participant != null && now - peer.lastAuthAt > 30_000) {

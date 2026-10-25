@@ -16,6 +16,7 @@ test('two users create, share, rename, switch, complete poker and sign out', asy
     await expect(a.getByRole('button', { name: 'Start poker' })).toBeEnabled();
     const boardPath = new URL(a.url()).pathname;
     await a.getByRole('button', { name: 'Share', exact: true }).click();
+    await a.getByRole('button', { name: 'Invitation links', exact: true }).click();
     await a.getByRole('button', { name: 'Create invitation link' }).click();
     const invitation = await a.getByLabel('Invitation link', { exact: true }).inputValue();
     await a.getByRole('button', { name: 'Close dialog' }).click();
@@ -38,8 +39,8 @@ test('two users create, share, rename, switch, complete poker and sign out', asy
     await b.getByRole('link', { name: title, exact: true }).click();
     await expect(b.getByRole('button', { name: 'Stop poker and reveal', exact: true })).toBeEnabled();
     await expect(a.getByText('Poker round', { exact: false })).toBeVisible();
-    b.once('dialog', dialog => dialog.accept());
     await b.getByRole('button', { name: 'Stop poker and reveal', exact: true }).click();
+    await b.getByRole('dialog', { name: 'Stop poker and reveal?' }).getByRole('button', { name: 'Reveal saved contributions' }).click();
     await expect(a.getByRole('button', { name: 'Start poker' })).toBeVisible();
     await a.getByRole('link', { name: 'Canvases', exact: false }).click();
     await a.getByLabel('Search canvases or tags', { exact: true }).fill(title);
@@ -58,6 +59,7 @@ test('two users create, share, rename, switch, complete poker and sign out', asy
     const other = await api(alice, '/api/boards', { name: 'Switch target' });
     await b.getByRole('link', { name: 'Canvases', exact: false }).click();
     await a.goto(base + boardPath);
+    await a.locator('.canvas-action-menu summary').click();
     await a.getByRole('button', { name: 'Switch canvas' }).click();
     await a.getByLabel('Search canvases or tags', { exact: true }).fill('Switch target');
     await a.getByRole('link', { name: 'Switch target', exact: false }).first().click();

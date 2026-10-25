@@ -11,6 +11,7 @@ export interface Account {
   admin?: boolean;
   id: string;
   displayName: string;
+  username?: string | null;
 }
 export type TemplateVisibility = "private" | "public";
 export interface Canvas {
@@ -27,6 +28,18 @@ export interface CanvasListPage {
   items: Canvas[];
   nextCursor: string | null;
 }
+export interface CanvasMember {
+  id: string;
+  displayName: string;
+  role: "owner" | "member";
+  revoked: boolean;
+  accountId: string;
+  username: string | null;
+  accountStatus: "active" | "deactivated" | "placeholder";
+}
+export interface CanvasMembersPage { items: CanvasMember[]; templateVisibility: TemplateVisibility | null; }
+export interface AccessEvent { id: number; action: string; actorName: string | null; targetName: string | null; targetId: string | null; createdAt: string; }
+export interface CanvasStorageUsage { deletedElements: number; unusedImages: number; sceneBytes: number; imageBytes: number; poker: boolean; }
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -87,6 +100,13 @@ export const previewInvitation = (id: string, inviteKey: string, signal?: AbortS
   );
 export const revokeInvitations = (id: string, revokeMembers: boolean) =>
   request<void>(`/api/boards/${id}/invitations/revoke`, { revokeMembers });
+export const getCanvasMembers = (id: string, signal?: AbortSignal) =>
+  request<CanvasMembersPage>(`/api/boards/${id}/members`, undefined, "GET", signal);
+export const setCanvasMemberAccess = (id: string, memberId: string, revoked: boolean) =>
+  request<void>(`/api/boards/${id}/members/${memberId}`, { revoked }, "PATCH");
+export const getAccessHistory = (id: string, signal?: AbortSignal) => request<AccessEvent[]>(`/api/boards/${id}/access-history`, undefined, "GET", signal);
+export const getCanvasStorage = (id: string, signal?: AbortSignal) => request<CanvasStorageUsage>(`/api/boards/${id}/storage`, undefined, "GET", signal);
+export const compactCanvasStorage = (id: string) => request<CanvasStorageUsage>(`/api/boards/${id}/storage/compact`, {});
 export async function fetchAsset(
   boardId: string,
   assetId: string,

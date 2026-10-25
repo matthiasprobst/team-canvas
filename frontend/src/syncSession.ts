@@ -211,7 +211,7 @@ export class SyncSession {
     this.action = null;
     this.awaitingState = false;
     if (this.recovery.length)
-      this.error = "The round changed. Unconfirmed changes are available as a draft download.";
+      this.error = "The canvas changed. Unconfirmed changes are available as a draft download.";
   }
 
   receive(event: ServerEvent) {

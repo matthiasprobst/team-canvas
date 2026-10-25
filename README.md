@@ -27,6 +27,9 @@ The [original simplicity review](docs/simplicity-review.md) records the starting
 - Multiple persistent pages per canvas. Any member can create or select a page, and everyone follows the same selected page. New pages can copy shared content, optionally including revealed poker contributions. Page changes are blocked during a poker round; page renaming, reordering, and deletion are not implemented.
 - A personal dashboard with **All canvases**, **My canvases**, and **Shared with me**, plus search by canvas name or tags and sorting. Owners can add up to 20 tags per canvas; suggestions come from tags on their own canvases, and template copies keep their source tags.
 - Create canvases, rename those you own, and share invitation links. Recipients sign in and explicitly accept invitations.
+- Owners can see everyone who joined under **Share → Members**, filter granted/removed memberships, and identify accounts by SSO username and stable account reference. Account deactivation is shown separately. Removing access disconnects all of that member's canvas tabs. Invitation links cannot bypass removal; this also applies to bulk removal and previously removed members. Restoring access allows the member to reopen without a new invitation, while old session tokens remain invalid. Saved contributions remain. **Share → Activity** shows the latest 50 access and maintenance changes from the point this feature was enabled.
+- Public template publication is independent of editing membership. Removed members can still copy a public template; Share clearly marks public templates and lets the owner make them private. Existing copies remain independent.
+- Owners can recover capacity under **Canvas actions → Storage** by removing deleted drawings and unused images across all pages. Cleanup requires poker to be stopped, preserves visible work, and clears undo history for deleted content. Unconfirmed changes in other tabs are preserved for explicit draft export.
 - Mark canvases you own as private templates, or make them public for all signed-in users of this deployment. Owners can edit templates from the Templates page; starting a template opens an independent canvas copied from the shared drawings and images across **all pages**. Private poker drafts, memberships, and invitations are not copied. Changes affect future copies only. Ready-made Scrum/architecture templates are not bundled; create your own layouts.
 - Delete canvases you own from the dashboard’s actions menu. Confirmation permanently removes all contents and invitations for everyone, including active private drafts; connected viewers are notified.
 - Persistent account membership across browsers/devices; independent sessions in multiple tabs.
@@ -175,7 +178,7 @@ docker compose logs --tail=100 backend db frontend keycloak
 | Login redirect or issuer mismatch | Keep the app callback URLs aligned with `PUBLIC_ORIGIN`, the OIDC issuer aligned with `KEYCLOAK_PUBLIC_URL`, and saved Keycloak client URLs aligned with the app origin. |
 | Password changes do not take effect | Existing database/realm state is retained; update credentials administratively. |
 | Another backend owns the database | Stop that backend before starting this one. |
-| Access expired or revoked | Export unsaved work if needed, then rejoin/sign in. Membership survives ordinary session expiry; revoked members need a new invitation. |
+| Access expired or revoked | Export unsaved work if needed, then rejoin/sign in. Membership survives ordinary session expiry; removed members must have access restored by the canvas owner, even if they have a new invitation. |
 | Build downloads fail | Check DNS, network access, and build proxy settings. |
 
 ## Contributing

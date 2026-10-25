@@ -42,11 +42,17 @@ Each canvas has an owning account and a durable participant membership per user.
 
 Board-session tokens are random, hashed in PostgreSQL, expire after 24 hours, and bind the participant to a particular user and Keycloak login `sid`. Each open gets an independent token. Logout revokes that login's ledger entry and board sessions and closes its sockets before RP-initiated Keycloak logout; a different device login remains valid. Database commands recheck membership, board-session expiry, and login revocation under locks. Replayed cookies cannot resurrect a revoked login.
 
-Only owners can create or revoke invitations. Each new link stores a separate hashed secret. Preview and explicit acceptance require both a signed-in account and the secret. Acceptance atomically adds or reactivates the existing membership. Invites grant member access, never ownership. Revocation can affect only links or also all shared memberships; it never edits the frozen poker roster.
+Only owners can create or revoke invitations. Each new link stores a separate hashed secret. Preview and explicit acceptance require both a signed-in account and the secret. Acceptance atomically adds a membership. Revoked memberships cannot rejoin through any invitation; the owner must explicitly restore them. Restoring membership never revalidates revoked session tokens. Invites grant editing membership, never ownership; every active member can start poker or reveal saved contributions.
+
+Owner-only membership responses include a stable account ID, the verified SSO username when available, and account status. Profile names remain non-unique labels. Access history records the actor, target, action and timestamp for member access changes, invitation revocation, template publication and storage cleanup. It contains no drawing content, draft capabilities or session tokens, and is deleted with the canvas. Deleted accounts are detached from retained history.
+
+Public templates can be copied by every active signed-in account, including revoked members. The sharing dialog exposes this independent publication channel and lets owners make the template private. Existing copies cannot be recalled. Templates are live sources, not versioned publications.
 
 The dashboard returns only metadata scoped to active membership, with bounded cursor pagination and a user/filter-bound cursor. It never creates sockets or returns scene/private-round data. Names are broadcast as a `metadata` event serialized with other board events; this does not replace editor state.
 
-React Router owns dashboard, invitation, editor, and logout navigation. The editor is loaded lazily. Route changes guard pending commands, unexported drafts, and unfinished poker participation. Old sockets must finish closing before the next connection opens; asset requests and timers are cancelled on unmount. A tab uses no persistent bearer-token storage.
+React Router owns dashboard, invitation, editor, and logout navigation. The editor is loaded lazily. Route changes guard pending commands and unexported recovery drafts. Old sockets must finish closing before the next connection opens; asset requests and timers are cancelled on unmount. A tab uses no persistent bearer-token storage. Expired OIDC connections use the same `login_expired` close reason whether detected by a command or the sweeper, refresh the company session once, and reconnect with pending command IDs preserved. Membership revocation never triggers an automatic rejoin.
+
+HTTP request origin and rate checks run before account provisioning. Account reads recheck identity blocks and login/account status, but unchanged profiles and existing login ledgers are read without rewriting the account. The request filter does not repeat service-level account provisioning.
 
 ## Protocol
 
@@ -77,13 +83,17 @@ Snapshots include image IDs, not image bytes. Assets are fetched individually th
 | Initial socket authentication | 10 seconds |
 | Input bytes | 8 MB per connection and 64 MB globally per 10 seconds |
 | Socket messages | 60 per second; up to 20 mutating commands per second |
-| Persisted commands | 50,000 per participant per day |
+| Persisted commands | 50,000 per canvas per day |
 | Stored participants | 200 per board |
 | Board contents | 4,000 elements, 150 images, 4 MB scene JSON, 32 MB image JSON |
 | Outgoing queue | 64 messages or 8 MB per connection; slow readers are disconnected |
 | Images | PNG, JPEG, WebP, or GIF; 1 MB per file; at most 8,192 pixels per dimension and 16 megapixels |
 
 For GIFs, the pixel budget covers the combined frame/canvas dimensions, with at most 100 frames. Animated PNG and WebP are rejected. Image signatures and metadata are checked before storage. SVG, embedded web content, and element links are not accepted.
+
+Presence reports both distinct people and occupied connections. A single person may occupy multiple connection slots through separate tabs.
+
+Deleted elements remain as synchronization tombstones until the owner chooses **Canvas actions → Storage → Clean up storage**. Cleanup is available outside poker and atomically removes deleted elements and unused images across all pages, advances the epoch/revision, and publishes fresh snapshots under the room lock. Old commands fail their epoch check and unconfirmed client edits remain available for draft export. Editor undo history is reset at epoch transitions. Cleanup cannot inspect or reveal private poker drafts. Per-page limits are 4,000 stored elements, 150 images, 4 MB scene JSON and 32 MB image JSON; the whole canvas also has 20 MB scene and 128 MB image budgets.
 
 ## Operations
 

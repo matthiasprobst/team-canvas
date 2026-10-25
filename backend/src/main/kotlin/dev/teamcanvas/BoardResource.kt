@@ -19,6 +19,7 @@ constructor(
     private val access: CanvasAccess,
     private val catalog: CanvasCatalog,
     private val hub: RoomHub,
+    private val storage: CanvasStorage,
 ) {
     @Context lateinit var security: SecurityContext
 
@@ -113,6 +114,41 @@ constructor(
         access.preview(boardId(raw), body.inviteKey, identity())
 
     data class RevokeRequest(val revokeMembers: Boolean = false)
+
+    @GET
+    @Path("/{id}/members")
+    fun members(@PathParam("id") raw: String): CanvasMembers = access.members(boardId(raw), identity())
+
+    @GET
+    @Path("/{id}/access-history")
+    fun accessHistory(@PathParam("id") raw: String): List<AccessEvent> = access.history(boardId(raw), identity())
+
+    @GET
+    @Path("/{id}/storage")
+    fun storage(@PathParam("id") raw: String): CanvasStorageUsage = storage.inspect(boardId(raw), identity())
+
+    @POST
+    @Path("/{id}/storage/compact")
+    fun compact(@PathParam("id") raw: String): CanvasStorageUsage {
+        val id = boardId(raw)
+        return hub.refresh(id) { storage.compact(id, identity()) }
+    }
+
+    @PATCH
+    @Path("/{id}/members/{memberId}")
+    fun setMemberAccess(
+        @PathParam("id") raw: String,
+        @PathParam("memberId") memberRaw: String,
+        body: MemberAccessRequest,
+    ): Response {
+        val id = boardId(raw)
+        val memberId = boardId(memberRaw)
+        val revoked = body.revoked ?: throw ClientException("bad_request", "Specify whether access is revoked.")
+        hub.memberAccess(id, memberId, revoked) {
+            access.setMemberAccess(id, memberId, revoked, identity())
+        }
+        return Response.noContent().build()
+    }
 
     @POST
     @Path("/{id}/invitations/revoke")

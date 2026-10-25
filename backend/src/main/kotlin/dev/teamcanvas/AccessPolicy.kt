@@ -50,7 +50,6 @@ constructor(
     private val policy: AccessPolicy,
     private val limits: RequestLimits,
     private val writer: SingleWriterGuard,
-    private val accounts: Accounts,
 ) : ContainerRequestFilter {
     override fun filter(context: ContainerRequestContext) {
         val path = context.uriInfo.path.trimStart('/')
@@ -63,7 +62,6 @@ constructor(
             return
         writer.requireOwner()
         val identity = loginIdentity(context.securityContext.userPrincipal)
-        accounts.current(identity)
         if (
             context.method !in setOf("GET", "HEAD", "OPTIONS") &&
                 !policy.allowsOrigin(context.getHeaderString("Origin"))
@@ -71,7 +69,7 @@ constructor(
             throw ClientException("forbidden", "Request from an untrusted origin rejected.")
         val client = Security.hash(identity.issuer + "\n" + identity.subject)
         limits.require("http:$client", 240, 60_000)
-        if (context.method == "POST" && !path.endsWith("/invitations"))
+        if (context.method == "POST" && (path == "api/boards" || path.endsWith("/join") || path.endsWith("/start-template")))
             limits.require("join:$client", 30, 60_000)
     }
 }
