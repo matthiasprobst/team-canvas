@@ -39,24 +39,40 @@ jobs:
             test -n "$expected"
             test "$(docker image inspect "team-canvas-$component" --format '{{.Id}}')" = "$expected"
           done
-      - name: Recheck backend before publication
+      - name: Record all current backend findings before publication
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
           scan-type: image
           image-ref: team-canvas-backend
           scanners: vuln,secret
-          severity: HIGH,CRITICAL
+          format: json
+          output: publication-backend-scan.json
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
           ignore-unfixed: false
-          exit-code: "1"
-      - name: Recheck frontend before publication
+          exit-code: "0"
+      - name: Record all current frontend findings before publication
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
           scan-type: image
           image-ref: team-canvas-frontend
           scanners: vuln,secret
-          severity: HIGH,CRITICAL
+          format: json
+          output: publication-frontend-scan.json
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
           ignore-unfixed: false
-          exit-code: "1"
+          exit-code: "0"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: publication-security-reports
+          path: publication-*-scan.json
+          retention-days: 14
+      - name: Reject current HIGH and CRITICAL findings including unfixed issues
+        run: |
+          set -euo pipefail
+          for report in publication-backend-scan.json publication-frontend-scan.json; do
+            trivy convert --severity HIGH,CRITICAL --exit-code 1 --format json --output /dev/null "$report"
+          done
       - name: Publish without rebuilding and record registry digests
         env:
           GH_TOKEN: ${{ github.token }}
@@ -68,6 +84,7 @@ jobs:
           commit=$(cat verified/commit.txt)
           mkdir published
           cp run.json verified/images.json verified/commit.txt verified/*-sbom.json verified/*-scan.json published/
+          cp publication-*-scan.json published/
           for component in backend frontend; do
             repository="ghcr.io/${REPOSITORY,,}/$component"
             docker tag "team-canvas-$component" "$repository:$commit"

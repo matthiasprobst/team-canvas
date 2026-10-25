@@ -134,7 +134,7 @@ jobs:
             backend-sbom.json
             frontend-runtime-sbom.json
             frontend/dist/dependency-inventory.json
-      - name: Scan backend dependencies and operating system
+      - name: Record all backend dependency and operating system findings
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
           scan-type: image
@@ -142,10 +142,10 @@ jobs:
           scanners: vuln,secret
           format: json
           output: backend-scan.json
-          severity: HIGH,CRITICAL
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
           ignore-unfixed: false
-          exit-code: "1"
-      - name: Scan frontend dependencies and operating system
+          exit-code: "0"
+      - name: Record all frontend dependency and operating system findings
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
           scan-type: image
@@ -153,9 +153,22 @@ jobs:
           scanners: vuln,secret
           format: json
           output: frontend-scan.json
-          severity: HIGH,CRITICAL
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
           ignore-unfixed: false
-          exit-code: "1"
+          exit-code: "0"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: runtime-security-reports
+          path: |
+            backend-scan.json
+            frontend-scan.json
+          retention-days: 14
+      - name: Reject HIGH and CRITICAL runtime findings including unfixed issues
+        run: |
+          for report in backend-scan.json frontend-scan.json; do
+            trivy convert --severity HIGH,CRITICAL --exit-code 1 --format json --output /dev/null "$report"
+          done
       - name: Retain tested images and identity evidence
         env:
           VERIFIED_COMMIT: ${{ github.sha }}
