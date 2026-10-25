@@ -35,11 +35,15 @@ function backend(database, args, key = blockingKey, expected = 0) {
     '-e', `IDENTITY_BLOCKING_SECRET=${key}`, '-e', 'TEAM_CANVAS_IDENTITY_BLOCKING_PREVIOUS_SECRETS=', 'backend', ...args], undefined, expected);
 }
 const tables = ['app_users', 'boards', 'canvas_pages', 'canvas_tags', 'participants', 'board_sessions', 'login_sessions',
-  'board_invitations', 'rounds', 'private_drafts', 'elements', 'assets', 'command_receipts', 'blocked_identities'];
-const inventory = database => Object.fromEntries(tables.map(table => [table, Number(sql(database, `SELECT count(*) FROM ${table};`))]));
+  'board_invitations', 'rounds', 'private_drafts', 'elements', 'assets', 'command_receipts', 'blocked_identities',
+  'admin_audit_events', 'canvas_access_events'];
+// These identifiers come only from the static schema list, never caller-supplied settings.
+// One SQL statement also gives every table in a snapshot the same database view.
+const inventory = database => JSON.parse(sql(database, `SELECT jsonb_build_object(${tables.map(table =>
+  `'${table}',(SELECT count(*) FROM ${table})`).join(',')});`));
 // Include complete rows: counts alone would miss accidental revocation or ownership changes.
-const databaseState = database => Object.fromEntries(tables.map(table => [table, sql(database,
-  `SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text,'[]') FROM ${table} t;`)]));
+const databaseState = database => JSON.parse(sql(database, `SELECT jsonb_build_object(${tables.map(table =>
+  `'${table}',(SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb) FROM ${table} t)`).join(',')});`));
 const ids = Object.fromEntries(['stay', 'anonymous', 'deleted', 'board', 'retainedBoard', 'deletedBoard', 'page', 'round', 'member'].map(name => [name, randomUUID()]));
 const issuer = 'https://recovery.example.test';
 const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4//8/AwAI/AL+Skg5VwAAAABJRU5ErkJggg==';
