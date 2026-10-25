@@ -20,7 +20,7 @@ Keep additions tied to those workflows. Chat, video calls, AI assistants, task/p
 
 React/TypeScript and Excalidraw provide the browser UI; Kotlin/Quarkus provides one backend; PostgreSQL stores accounts, drawings, and uploaded images. Caddy serves the UI and proxies requests. Company deployments use an existing Keycloak identity provider. No Redis, message broker, separate image store, or application SaaS account is required. Tailwind and Vite are build tooling, and the UI is English.
 
-The [original simplicity review](docs/simplicity-review.md) records the starting point; the [validation record](.features/company-readiness/validation.md) tracks current rollout gaps. The bundled Compose setup is for disposable development data; use the Helm deployment for the company configuration.
+The [original simplicity review](docs/simplicity-review.md) records the starting point; the [validation record](.features/company-readiness/validation.md) tracks historical rollout gaps. The bundled Compose setup is for disposable development data. The [operator handover](docs/operator-handover.md) lets the company implement its own staging and choose its production platform; Helm provides an optional reference.
 
 ## Features
 
@@ -41,7 +41,7 @@ The backend supports **one active instance per database** and **ten simultaneous
 
 ## Quick start
 
-Install Docker with the Compose plugin. The bundled Compose setup is for development. Migration validation fails safely without resetting the schema. Use the [company deployment guide](deploy/kubernetes/README.md) for retained company data. From the repository root:
+Install Docker with the Compose plugin. The bundled Compose setup is for development. Migration validation fails safely without resetting the schema. Use the [operator handover](docs/operator-handover.md) before admitting retained company data. From the repository root:
 
 ```sh
 test -f .env || cp .env.example .env
@@ -137,7 +137,7 @@ CI runs frontend checks, backend tests with PostgreSQL, container builds, authen
 
 ## Company deployment
 
-Use company-managed Keycloak and the [Helm deployment guide](deploy/helm/README.md). All data APIs, assets, and WebSocket upgrades require sign-in. There is no supported guest-mode bypass. OIDC tokens remain in server-managed HttpOnly cookies; app accounts use verified issuer/subject identity and board sessions are also bound to the Keycloak login session.
+The receiving company chooses where and how to operate staging and production. The [operator handover](docs/operator-handover.md) documents platform-independent requirements, configuration and acceptance checks. The [Helm deployment guide](deploy/helm/README.md) is an optional Kubernetes reference. Use company-managed Keycloak. All data APIs, assets, and WebSocket upgrades require sign-in. There is no supported guest-mode bypass. OIDC tokens remain in server-managed HttpOnly cookies; app accounts use verified issuer/subject identity and board sessions are also bound to the Keycloak login session.
 
 Keycloak is the documented SSO target and the provider used by the automated test suite; direct compatibility with other OIDC providers is not established. Kubernetes is the supplied company deployment template, not an application requirement. A production Compose configuration is not supplied.
 

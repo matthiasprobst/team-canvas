@@ -1,5 +1,7 @@
 # Company deployment with Helm
 
+This is an optional Kubernetes reference. The receiving company decides the hosting platform and implements its own staging/production environment. See the [platform-independent operator handover](../../docs/operator-handover.md) for the runtime contract and responsibility boundary.
+
 This chart uses existing company PostgreSQL, Keycloak, HTTPS ingress, CNI network policies and Secrets. It creates no database, IdP, or secret values. Supply every required company setting from `team-canvas/values.yaml`; values schema requires immutable image digests and positive quotas. Never commit actual secrets.
 
 ```sh
