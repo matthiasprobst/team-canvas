@@ -11,6 +11,7 @@ import javax.sql.DataSource
 import org.eclipse.microprofile.health.HealthCheck
 import org.eclipse.microprofile.health.HealthCheckResponse
 import org.eclipse.microprofile.health.Readiness
+import org.eclipse.microprofile.health.Liveness
 import org.jboss.logging.Logger
 
 /** Fail closed if a second backend starts, including an accidental rolling-update overlap. */
@@ -20,9 +21,13 @@ class SingleWriterGuard @Inject constructor(private val dataSource: DataSource) 
     private val log = Logger.getLogger(SingleWriterGuard::class.java)
     private var connection: Connection? = null
     private var backendPid: Int = 0
+    private enum class State { NEW, OWNED, LOST, CLOSED }
+    private var state = State.NEW
 
     @PostConstruct
+    @Synchronized
     fun start() {
+        check(state == State.NEW) { "Writer ownership can only be acquired during startup." }
         val candidate = dataSource.connection
         try {
             candidate.createStatement().use { statement ->
@@ -38,6 +43,7 @@ class SingleWriterGuard @Inject constructor(private val dataSource: DataSource) 
                     }
             }
             connection = candidate
+            state = State.OWNED
         } catch (error: Exception) {
             candidate.close()
             throw error
@@ -45,17 +51,36 @@ class SingleWriterGuard @Inject constructor(private val dataSource: DataSource) 
     }
 
     @Synchronized
-    fun ownsDatabase(): Boolean =
-        try {
+    fun ownsDatabase(): Boolean {
+        if (state != State.OWNED) return false
+        val owned = try {
             connection?.createStatement()?.use { statement ->
                 statement.queryTimeout = 2
-                statement.executeQuery("SELECT pg_backend_pid()").use {
-                    it.next() && it.getInt(1) == backendPid
+                // A pool/proxy can retain the PID after releasing session locks. Check the
+                // original bigint advisory lock too, without acquiring it again.
+                statement.executeQuery("""SELECT pg_backend_pid(),EXISTS(
+                    SELECT 1 FROM pg_locks WHERE locktype='advisory' AND pid=pg_backend_pid()
+                    AND database=(SELECT oid FROM pg_database WHERE datname=current_database())
+                    AND classid=0 AND objid=1978842491 AND objsubid=1 AND granted)""").use {
+                    it.next() && it.getInt(1) == backendPid && it.getBoolean(2)
                 }
             } ?: false
         } catch (_: Exception) {
             false
         }
+        if (!owned) {
+            state = State.LOST
+            log.error("Database writer ownership lost. Restart this backend before serving more requests.")
+        }
+        return owned
+    }
+
+    /** Initialisation and deliberate shutdown are not an unexpected ownership loss. */
+    @Synchronized
+    fun isAlive(): Boolean {
+        if (state == State.OWNED) ownsDatabase()
+        return state != State.LOST
+    }
 
     fun requireOwner() {
         if (!ownsDatabase())
@@ -65,6 +90,7 @@ class SingleWriterGuard @Inject constructor(private val dataSource: DataSource) 
     @PreDestroy
     @Synchronized
     fun close() {
+        state = State.CLOSED
         val owned = connection ?: return
         connection = null
         try {
@@ -92,4 +118,11 @@ class SingleWriterGuard @Inject constructor(private val dataSource: DataSource) 
 class WriterReadiness @Inject constructor(private val writer: SingleWriterGuard) : HealthCheck {
     override fun call(): HealthCheckResponse =
         HealthCheckResponse.named("single-writer").status(writer.ownsDatabase()).build()
+}
+
+@Liveness
+@ApplicationScoped
+class WriterLiveness @Inject constructor(private val writer: SingleWriterGuard) : HealthCheck {
+    override fun call(): HealthCheckResponse =
+        HealthCheckResponse.named("single-writer-lifecycle").status(writer.isAlive()).build()
 }

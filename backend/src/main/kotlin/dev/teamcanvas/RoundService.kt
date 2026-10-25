@@ -33,6 +33,6 @@ class RoundService @Inject constructor(private val repository: BoardRepository) 
             c.update("UPDATE boards SET mode='standard',current_round_id=NULL,epoch=epoch+1 WHERE id=?", who.boardId)
             c.update("DELETE FROM rounds WHERE board_id=? AND id=?", who.boardId, state.roundId)
             c.update("DELETE FROM command_receipts WHERE board_id=? AND receipt_scope<>'public'", who.boardId)
-            CommandResult(repository.commitCommand(c, who, context.commandId), transitioned = true)
+            CommandResult(repository.commitCommand(c, who, context.commandId, completingRound = true), transitioned = true)
         }
 }

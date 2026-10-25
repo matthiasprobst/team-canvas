@@ -93,10 +93,15 @@ class BoardRepository @Inject constructor(private val dataSource: DataSource, va
             if (it.next()) CommandAck(commandId = id, revision = it.getLong(1)) else null
         }
 
-    fun commitCommand(c: Connection, who: Participant, id: UUID, roundId: UUID? = null): CommandAck {
+    fun commitCommand(c: Connection, who: Participant, id: UUID, roundId: UUID? = null,
+                      completingRound: Boolean = false): CommandAck {
         c.update("DELETE FROM command_receipts WHERE board_id=? AND created_at<now()-interval '2 days'", who.boardId)
         val count = c.query("SELECT count(*) FROM command_receipts WHERE board_id=? AND created_at>now()-interval '1 day'", who.boardId) { it.next(); it.getLong(1) }
-        if (count >= BoardLimits.COMMANDS_PER_DAY) throw ClientException("daily_limit", "Daily canvas change limit reached.")
+        // A real reveal must still finish when its start consumed the final slot.
+        // Only that transition bypasses the budget: new starts and no-op controls
+        // remain limited, so clients cannot mint unlimited completion receipts.
+        if (count >= BoardLimits.COMMANDS_PER_DAY && !completingRound)
+            throw ClientException("daily_limit", "Daily canvas change limit reached.")
         val revision = c.query("UPDATE boards SET revision=revision+1 WHERE id=? RETURNING revision", who.boardId) { it.next(); it.getLong(1) }
         c.update("INSERT INTO command_receipts(board_id,receipt_scope,command_id,revision) VALUES(?,?,?,?)",
             who.boardId, receiptScope(who, roundId), id, revision)
