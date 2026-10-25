@@ -42,7 +42,7 @@ test('two-user drawing and private reveal use only the app and configured identi
     await a.goto(`/b/${board.id}`);
     await b.goto(`/b/${board.id}`);
     await expect(a.getByRole('button', { name: 'Sticky note', exact: true })).toBeEnabled();
-    await expect(b.getByText('2/10', { exact: true })).toBeVisible();
+    await expect(b.getByText(/^2\/\d+$/)).toBeVisible();
     await a.getByRole('button', { name: 'Sticky note', exact: true }).click();
     await expect(a.getByText('Saved', { exact: true })).toBeVisible();
     await a.getByRole('button', { name: 'Start poker', exact: true }).click();

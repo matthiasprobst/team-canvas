@@ -45,6 +45,7 @@ constructor(
     private val limits: RequestLimits,
     private val writer: SingleWriterGuard,
     private val metrics: MeterRegistry,
+    private val connections: ConnectionLimits,
 ) {
     private val log = Logger.getLogger(RoomHub::class.java)
     private val peers = ConcurrentHashMap<String, Peer>()
@@ -134,11 +135,7 @@ constructor(
                         throw ClientException("invalid_state", "Already signed in.")
                     val token = packet.path("token").asText("")
                     val who = access.authenticate(boardId, token, peer.identity)
-                    if (audience(boardId).size >= BoardLimits.CONNECTIONS_PER_BOARD)
-                        throw ClientException(
-                            "room_full",
-                            "A canvas supports at most 10 active connections.",
-                        )
+                    connections.requireSlot(audience(boardId).size)
                     peer.participant = who
                     peer.token = token
                     peer.lastAuthAt = System.currentTimeMillis()
@@ -274,7 +271,7 @@ constructor(
                 .distinctBy { it.id }
                 .map { PresenceMember(it.id, it.name, it.role) }
         audience(id).forEach {
-            send(it, PresenceEvent(participants, audience(id).size))
+            send(it, PresenceEvent(participants, audience(id).size, connections.maxPerCanvas))
         }
     }
 

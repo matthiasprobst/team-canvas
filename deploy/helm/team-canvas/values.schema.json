@@ -66,11 +66,17 @@
     "limits": {
       "type": "object",
       "required": [
+        "maxConnectionsPerCanvas",
         "maxPagesPerCanvas",
         "maxOwnedCanvasesPerUser"
       ],
       "additionalProperties": false,
       "properties": {
+        "maxConnectionsPerCanvas": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200
+        },
         "maxPagesPerCanvas": {
           "type": "integer",
           "minimum": 1,

@@ -30,7 +30,7 @@ Configure the `production-release` GitHub environment with required reviewers an
 
 ## Supported availability limits
 
-The backend supports one active instance with Recreate updates and maintenance downtime. The guard rejects overlapping writers; horizontal scaling and zero-downtime backend releases are unsupported. Budgets are 200 simultaneous sockets overall, 20 per account and ten per canvas. Tabs and reconnects consume this budget. Accept this service level explicitly or redesign and qualify the architecture before promising higher availability or capacity.
+The backend supports one active instance with Recreate updates and maintenance downtime. The guard rejects overlapping writers; horizontal scaling and zero-downtime backend releases are unsupported. Budgets are 200 simultaneous sockets overall, 20 per account and a configurable limit per canvas, defaulting to 30. Set `TEAM_CANVAS_MAX_CONNECTIONS_PER_CANVAS` to an integer from 1 to 200 and restart the backend to apply it. Tabs and reconnects consume this budget. Historical ten-client workshop results do not qualify larger canvases; exercise the intended limit on the target infrastructure. Accept this service level explicitly or redesign and qualify the architecture before promising higher availability or capacity.
 
 ## Repeatable local load qualification
 

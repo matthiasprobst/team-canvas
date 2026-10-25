@@ -139,12 +139,25 @@ try {
   console.log('✓ Pages copy images and poker provenance independently and select globally');
 
   // Reconnect can briefly overlap the old closing socket; wait for its close handshake above.
-  for (let i = 0; i < 8; i++) {
-    const who = await request(`/api/boards/${board.id}/join`, {});
-    await connect(board, who);
+  const presence = await rejoined.next(packet => packet.type === 'presence');
+  const maximum = presence.maxConnections;
+  assert(Number.isInteger(maximum) && maximum >= 2 && maximum <= 38,
+    'This two-account smoke fixture requires a configured canvas limit between 2 and 38');
+  for (let i = 0; i < maximum - 2; i++) {
+    const context = i % 2 ? bob : alice;
+    const page = i % 2 ? bPage : aPage;
+    const who = await request(`/api/boards/${board.id}/join`, {}, 200, context);
+    await connect(board, who, page);
   }
   const overflow = await request(`/api/boards/${board.id}/join`, {});
   const extra = new Client(board.id, overflow.token); clients.push(extra);
-  await extra.next(packet => packet.type === 'error' && packet.code === 'room_full');
-  console.log('✓ Ten authenticated connections enforced');
+  const full = await extra.next(packet => packet.type === 'error' && packet.code === 'room_full');
+  assert(full.message.includes(`${maximum} active connections`));
+  await extra.close();
+  await clients[clients.length - 2].close();
+  const returned = await connect(board, overflow);
+  const occupied = await returned.next(packet => packet.type === 'presence');
+  assert.equal(occupied.connections, maximum);
+  assert.equal(occupied.maxConnections, maximum);
+  console.log(`✓ Configured limit of ${maximum} authenticated connections enforced`);
 } finally { await Promise.allSettled(clients.map(client => client.close())); await browser.close(); }

@@ -58,6 +58,7 @@ services:
       # Development upgrades validate applied checksums inside migrate(), then apply
       # pending migrations. A separate pre-validation rejects pending versions.
       TEAM_CANVAS_MIGRATE_AT_START: "true"
+      TEAM_CANVAS_MAX_CONNECTIONS_PER_CANVAS: ${TEAM_CANVAS_MAX_CONNECTIONS_PER_CANVAS:-30}
       QUARKUS_FLYWAY_VALIDATE_AT_START: "false"
       QUARKUS_FLYWAY_VALIDATE_ON_MIGRATE: "true"
       QUARKUS_FLYWAY_VALIDATE_AT_START_CLEAN_ON_VALIDATION_ERROR: "false"

@@ -37,7 +37,7 @@ The [original simplicity review](docs/simplicity-review.md) records the starting
 - Private poker contributions protected by unlinked draft capabilities; any member can stop poker and reveal saved work.
 - Canvas switching with pending-change protection and draft export.
 
-The backend supports **one active instance per database** and **ten simultaneous connections per canvas**, including multiple tabs. Bots, archive, and revision history are not implemented.
+The backend supports **one active instance per database** and defaults to **30 simultaneous connections per canvas**, including multiple tabs. Set `TEAM_CANVAS_MAX_CONNECTIONS_PER_CANVAS` in `.env` to an integer from 1 to 200, then recreate the backend with `docker compose up -d`. This deployment-wide setting applies to every canvas; extra tabs count separately. The server-wide limit remains 200 connections and each account can open at most 20. Bots, archive, and revision history are not implemented.
 
 ## Quick start
 

@@ -39,7 +39,7 @@ test('page copies preserve sticky bindings and synchronize selection, blank page
     await a.goto(`/b/${board.id}`);
     await b.goto(`/b/${board.id}`);
     await expect(a.getByRole('button', { name: 'Sticky note' })).toBeEnabled();
-    await expect(b.getByText('2/10', { exact: true })).toBeVisible();
+    await expect(b.getByText(/^2\/\d+$/)).toBeVisible();
     const originalPage = aStates.at(-1).board.pageId;
     await a.getByRole('button', { name: 'Sticky note' }).click();
     await createPage(a);

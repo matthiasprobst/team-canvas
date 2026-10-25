@@ -11,6 +11,7 @@ trustedProxies: ""
 databaseCIDR: ""
 identityCIDR: ""
 limits:
+  maxConnectionsPerCanvas: 30
   maxPagesPerCanvas: 10
   maxOwnedCanvasesPerUser: 20
 # Render/run migration Job separately while the backend is stopped.

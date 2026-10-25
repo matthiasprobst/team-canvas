@@ -20,6 +20,7 @@ export default function BoardEditor({ boardId, identity, user }: { boardId: stri
     view,
     people,
     connections,
+    maxConnections,
     deleted,
     editorRef,
     onChange,
@@ -214,7 +215,7 @@ export default function BoardEditor({ boardId, identity, user }: { boardId: stri
       )}
       <div className="sidebar">
         <span>
-          <b>{people.length}</b> {people.length === 1 ? "person" : "people"} · <b>{connections}/10</b> connections
+          <b>{people.length}</b> {people.length === 1 ? "person" : "people"} · <b>{connections}{maxConnections === null ? "" : `/${maxConnections}`}</b> connections
         </span>
         {people.map((person) => (
           <span key={person.id} className="pill">

@@ -124,6 +124,7 @@ try {
             resolve();
           }
           if (packet.type === 'round') client.state = packet.board;
+          if (packet.type === 'presence') client.maxConnections = packet.maxConnections;
           if (packet.type === 'patch') downloadAssets(client, packet.fileIds);
           if (packet.type === 'error') {
             if (packet.code === 'login_expired') expiry = true;
@@ -184,14 +185,17 @@ try {
   const connections = canvasCount * users.length;
   console.log(`Connected ${connections} authenticated sockets across ${canvasCount} canvases; profile=${profile}.`);
   const overflowSession = await api(users[0].context, `/api/boards/${boards[0].id}/join`, {});
+  const canvasMaximum = await users[0].page.evaluate(() => window.load.clients[0].maxConnections);
+  assert(Number.isInteger(canvasMaximum), 'Server must advertise its configured canvas limit');
   const overflow = await users[0].page.evaluate(({ id, token }) => new Promise((resolve, reject) => {
     const url = new URL(`/ws/boards/${id}`, location.href); url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(url);
-    const timer = setTimeout(() => { ws.close(); reject(Error('Overflow was not rejected')); }, 10000);
+    const timer = setTimeout(() => { ws.close(); reject(Error('Capacity probe did not complete')); }, 10000);
     ws.onopen = () => ws.send(JSON.stringify({ type: 'hello', token, protocolVersion: 2 }));
+    ws.onmessage = event => { if (JSON.parse(event.data).type === 'snapshot') ws.close(1000); };
     ws.onclose = event => { clearTimeout(timer); resolve(event.code); };
   }), { id: boards[0].id, token: overflowSession.token });
-  assert.equal(overflow, profile === 'workshop' ? 1008 : 1013);
+  assert.equal(overflow, profile === 'capacity' ? 1013 : canvasMaximum === users.length ? 1008 : 1000);
   // Populate a representative scene and image before measuring a shared workshop.
   if (profile === 'workshop') {
     await users[0].page.evaluate(async count => {
@@ -311,7 +315,7 @@ try {
     offlineTicks: results.reduce((sum, result) => sum + result.offlineTicks, 0),
     assetDownloads: results.reduce((sum, result) => sum + result.assetDownloads, 0),
     backpressure: results.reduce((sum, result) => sum + result.backpressure, 0),
-    sent: results.reduce((sum, result) => sum + result.sent, 0), p95Ms, maxMs, overflowCode: overflow };
+    sent: results.reduce((sum, result) => sum + result.sent, 0), p95Ms, maxMs, maxConnectionsPerCanvas: canvasMaximum, overflowCode: overflow };
   console.log(JSON.stringify(report, null, 2));
   if (process.env.LOAD_REPORT) writeFileSync(process.env.LOAD_REPORT, JSON.stringify(report, null, 2), { mode: 0o600 });
   assert(results.every(result => !result.pending && !result.errors.length && !result.closed && !result.offline && !result.unfinishedAssets), JSON.stringify(results.map(({ latencyHistogram, ...rest }) => rest)));

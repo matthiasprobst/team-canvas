@@ -28,6 +28,7 @@ spec:
           env:
             - {name: TEAM_CANVAS_PRODUCTION, value: "true"}
             - {name: TEAM_CANVAS_MIGRATE_AT_START, value: "false"}
+            - {name: TEAM_CANVAS_MAX_CONNECTIONS_PER_CANVAS, value: {{ .Values.limits.maxConnectionsPerCanvas | quote }}}
             - {name: TEAM_CANVAS_MAX_PAGES, value: {{ .Values.limits.maxPagesPerCanvas | quote }}}
             - {name: TEAM_CANVAS_MAX_OWNED_CANVASES, value: {{ .Values.limits.maxOwnedCanvasesPerUser | quote }}}
             - {name: QUARKUS_OIDC_AUTHENTICATION_COOKIE_FORCE_SECURE, value: "true"}

@@ -22,7 +22,7 @@ test('owner confirms deletion, members cannot delete, and open viewers are notif
     await observer.goto(`${base}/b/${board.id}`);
     await b.goto(`${base}/b/${board.id}`);
     await expect(observer.getByRole('button', { name: 'Start poker' })).toBeEnabled();
-    await expect(b.getByText('2/10', { exact: true })).toBeVisible();
+    await expect(b.getByText(/^2\/\d+$/)).toBeVisible();
     await observer.getByRole('button', { name: 'Start poker' }).click();
     await expect(b.getByText('Poker round', { exact: false }).first()).toBeVisible();
     await b.getByRole('button', { name: 'Sticky note' }).click();

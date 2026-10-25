@@ -21,7 +21,7 @@ The deliverable is the application source, container build definitions, automate
 - Store secrets outside source control and database backups: persistent session encryption key, identity-blocking key ring, DB credentials and OIDC client secret. Keep independent current offboarding exports. Never use the development realm/accounts or development secrets with company data.
 - Supervise the backend: remove traffic when `/q/health/ready` fails and restart the process when `/q/health/live` stays failed. Kubernetes implements this through probes. Docker Compose health status alone does **not** restart an unhealthy process; another runtime must supply equivalent supervision.
 - Scrape internal `/q/metrics`, configure actual alerts and test their delivery. Restrict connections according to the chosen platform's network controls; the optional Helm policies illustrate the required boundaries.
-- Accept or revise the supported service envelope: one backend, planned maintenance, 200 sockets overall, 20 per account, ten per canvas including extra tabs. Object-level last-writer-wins and no revision history are product limits.
+- Accept or revise the supported service envelope: one backend, planned maintenance, 200 sockets overall, 20 per account, and a configurable per-canvas limit defaulting to 30, including extra tabs. Qualify the chosen canvas limit on the company's infrastructure; historical ten-client workshop results do not establish thirty-client capacity. Object-level last-writer-wins and no revision history are product limits.
 
 ## Production configuration
 
@@ -31,6 +31,7 @@ These variables describe the backend regardless of the hosting platform. Inject 
 | --- | --- |
 | `TEAM_CANVAS_PRODUCTION` | `true` (enables startup validation) |
 | `TEAM_CANVAS_MIGRATE_AT_START` | `false`; run the image's `migrate` command separately with the backend stopped |
+| `TEAM_CANVAS_MAX_CONNECTIONS_PER_CANVAS` | Integer from 1 to 200; defaults to 30 active connections per canvas, including tabs. Apply by restarting the backend; global/account limits remain 200/20. |
 | `JDBC_URL`, `DB_USER`, `DB_PASSWORD` | Runtime-role connection; verify server certificate/hostname (`sslmode=verify-full`) |
 | `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | HTTPS company Keycloak issuer and confidential application client |
 | `OIDC_SESSION_SECRET` | Persistent cryptographically random secret, at least 32 characters |

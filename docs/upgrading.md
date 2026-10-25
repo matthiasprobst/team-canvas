@@ -1,5 +1,7 @@
 # Initial-development database changes
 
+The configurable canvas connection limit needs matching frontend/backend images and a browser reload: presence messages now include the server's `maxConnections`. No database migration is needed for this setting. The default is 30 active connections per canvas; operators can set `TEAM_CANVAS_MAX_CONNECTIONS_PER_CANVAS` to an integer from 1 to 200 before restarting the backend.
+
 The initial-development schema was consolidated into V1, as agreed with the repository owner. Databases created from the current V1 baseline can now apply forward migrations. Databases with older consolidated V1 checksums still fail validation safely; startup never resets them.
 
 V2 adds optional verified SSO usernames and canvas access history without changing existing memberships or drawing data. Usernames populate on the next authenticated account check. Older actions have no fabricated history. Stop the backend, back up retained data, and run the standalone `backend migrate` command using migration credentials before starting the matching application images. Ensure runtime grants and default privileges include the new `canvas_access_events` table and its identity sequence.
