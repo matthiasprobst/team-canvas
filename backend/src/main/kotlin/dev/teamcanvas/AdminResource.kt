@@ -22,6 +22,8 @@ class AdminResource @Inject constructor(private val service: AdminService, priva
         actor()
         return Response.ok(service.offboardingExport()).header("Content-Disposition", "attachment; filename=team-canvas-offboarding.json").build()
     }
+    @GET @Path("/audit")
+    fun audit(): List<AdminAuditEvent> { actor(); return service.audit() }
     @GET @Path("/users")
     fun users(@QueryParam("offset") @DefaultValue("0") offset: Int, @QueryParam("q") @DefaultValue("") q: String): AdminUsers {
         actor()

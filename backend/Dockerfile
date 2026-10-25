@@ -6,7 +6,10 @@ COPY src ./src
 RUN mvn -B -DskipTests package
 
 FROM eclipse-temurin:21-jre-noble
-RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /work
 COPY --from=builder /app/target/quarkus-app/ /work/
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75"

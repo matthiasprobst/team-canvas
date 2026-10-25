@@ -32,7 +32,21 @@ test('all shared protocol fixtures pass the production decoder', () => {
 });
 
 test('presence distinguishes people from occupied connections and rejects impossible counts', () => {
-  const packet = { type: 'presence', participants: [{ id: 'p', name: 'One person', role: 'guest' }], connections: 3 };
+  const packet = { type: 'presence', participants: [{ id: 'p', name: 'One person', role: 'guest' }], connections: 3, maxConnections: 30 };
   assert.deepEqual(parseServerEvent(JSON.stringify(packet)), packet);
-  for (const connections of [0, 11, -1, 1.5]) assert.throws(() => parseServerEvent(JSON.stringify({ ...packet, connections })));
+  for (const connections of [0, 31, -1, 1.5]) assert.throws(() => parseServerEvent(JSON.stringify({ ...packet, connections })));
+  for (const maxConnections of [undefined, 0, 201, -1, 1.5, '30']) {
+    assert.throws(() => parseServerEvent(JSON.stringify({ ...packet, maxConnections })));
+  }
+});
+
+test('presence accepts configured limits above ten and enforces the advertised capacity', () => {
+  for (const maxConnections of [1, 7, 30, 200]) {
+    const participants = Array.from({ length: maxConnections }, (_, index) => ({ id: `p${index}`, name: 'Person', role: 'guest' }));
+    const packet = { type: 'presence', participants, connections: maxConnections, maxConnections };
+    assert.deepEqual(parseServerEvent(JSON.stringify(packet)), packet);
+    assert.throws(() => parseServerEvent(JSON.stringify({ ...packet, connections: maxConnections + 1 })));
+    assert.throws(() => parseServerEvent(JSON.stringify({ ...packet, connections: maxConnections - 1 })));
+    assert.deepEqual(parseServerEvent(JSON.stringify({ ...packet, participants: [], connections: 0 })), { ...packet, participants: [], connections: 0 });
+  }
 });

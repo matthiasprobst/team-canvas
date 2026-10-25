@@ -4,7 +4,6 @@ package dev.teamcanvas
 object BoardLimits {
     const val CONNECTIONS = 200
     const val CONNECTIONS_PER_ACCOUNT = 20
-    const val CONNECTIONS_PER_BOARD = 10
     const val MESSAGE_BYTES = 2_000_000
     const val OUTGOING_MESSAGES = 64
     const val OUTGOING_BYTES = 8_000_000L

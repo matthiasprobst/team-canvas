@@ -74,6 +74,6 @@ export type ServerEvent =
   | PatchEvent
   | { type: "ack"; commandId: string; revision: number }
   | { type: "round"; board: BoardState; round: RoundState | null }
-  | { type: "presence"; participants: Presence[]; connections: number }
+  | { type: "presence"; participants: Presence[]; connections: number; maxConnections: number }
   | { type: "cursor"; id: string; x: number; y: number }
   | { type: "error"; commandId: string | null; code: string; message: string };

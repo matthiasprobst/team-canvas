@@ -32,7 +32,7 @@ for (const detection of ['sweeper', 'message', 'network']) {
         const packet = JSON.parse(String(raw));
         if (packet.type === 'hello') {
           ws.send(JSON.stringify({ type: 'snapshot', data: snapshot() }));
-          ws.send(JSON.stringify({ type: 'presence', participants: [{ id: 'member', name: 'Owner', role: 'host' }], connections: 3 }));
+          ws.send(JSON.stringify({ type: 'presence', participants: [{ id: 'member', name: 'Owner', role: 'host' }], connections: 3, maxConnections: connections === 1 ? 47 : 19 }));
         } else if (packet.type === 'patch') patches.push(packet);
         else if (packet.type === 'ping') ws.send('{"type":"pong"}');
       });
@@ -40,10 +40,11 @@ for (const detection of ['sweeper', 'message', 'network']) {
     await page.goto(`/b/${id}`);
     await page.getByRole('button', { name: 'Sticky note' }).click();
     await expect.poll(() => patches.length).toBe(1);
-    await expect(page.locator('.sidebar')).toContainText('1 person · 3/10 connections');
+    await expect(page.locator('.sidebar')).toContainText('1 person · 3/47 connections');
     if (detection === 'message') socket.send(JSON.stringify({ type: 'error', commandId: null, code: 'login_expired', message: 'Sign-in session expired.' }));
     socket.close({ code: detection === 'network' ? 1006 : 1008, reason: detection === 'network' ? '' : 'login_expired' });
     await expect.poll(() => connections).toBe(2);
+    await expect(page.locator('.sidebar')).toContainText('1 person · 3/19 connections');
     await expect.poll(() => patches.length).toBe(2);
     expect(patches[1].commandId).toBe(patches[0].commandId);
     expect(companyChecks).toBe(2);

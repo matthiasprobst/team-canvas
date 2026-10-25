@@ -1,5 +1,7 @@
 # Company deployment with Helm
 
+This is an optional Kubernetes reference. The receiving company decides the hosting platform and implements its own staging/production environment. See the [platform-independent operator handover](../../docs/operator-handover.md) for the runtime contract and responsibility boundary.
+
 This chart uses existing company PostgreSQL, Keycloak, HTTPS ingress, CNI network policies and Secrets. It creates no database, IdP, or secret values. Supply every required company setting from `team-canvas/values.yaml`; values schema requires immutable image digests and positive quotas. Never commit actual secrets.
 
 ```sh
@@ -9,7 +11,7 @@ helm template team-canvas deploy/helm/team-canvas -f company-values.yaml > rende
 
 Runtime Secret: JDBC_URL (with sslmode=verify-full), DB_USER, DB_PASSWORD, OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_SESSION_SECRET (32+ random characters), and IDENTITY_BLOCKING_SECRET (32+ random characters). Migration Secret: JDBC_URL, DB_USER and DB_PASSWORD for the schema owner. Mount company CA certificates as required by your environment. The runtime role has DML privileges only.
 
-Limits default to 10 pages and 20 owned canvases. Set `limits.maxPagesPerCanvas` and `limits.maxOwnedCanvasesPerUser` to override; templates count as owned. Changes restart the backend through Helm's deployment update. Existing data is preserved when limits are lowered.
+Limits default to 30 active connections per canvas, 10 pages and 20 owned canvases. Set `limits.maxConnectionsPerCanvas` (integer from 1 to 200), `limits.maxPagesPerCanvas` and `limits.maxOwnedCanvasesPerUser` to override; extra tabs count as connections and templates count as owned. The global 200-connection and per-account 20-connection limits still apply. Changes restart the backend through Helm's deployment update. Existing data is preserved when limits are lowered. Qualify larger workshops on the target infrastructure; historical ten-client measurements remain limited to that workload.
 
 For upgrades, put ingress in maintenance mode, stop the backend, back up the database, then render only `templates/migration-job.yaml` with `--set runMigration=true` and apply that Job. Wait for success before deploying the matching frontend/backend with the default `runMigration=false`. The migration command takes the same database writer lock and refuses to run beside an active backend. Never run a migration as an automatic pre-upgrade hook against a running backend. Reopen ingress only after readiness and real SSO/two-user checks.
 
@@ -18,3 +20,18 @@ Keep exactly one backend (Recreate); health/metrics are internal. Restrict front
 Initial-development schema can be recreated only with an explicit reset of disposable data. Startup never cleans a mismatched schema. Historical migrations are not a supported production upgrade path yet. See the operations runbook for recovery and release qualification.
 
 The admin screen exposes a download of keyed offboarding recovery state. Retain it outside PostgreSQL after every irreversible lifecycle operation and preserve the original identity-blocking key ring. See the operations runbook before a restore.
+
+## Internal metrics
+
+Metrics remain unavailable through the public Caddy/Ingress route. To allow the company Prometheus pods to scrape the backend Service on port 8080 at `/q/metrics`, enable the optional policy with **both** label selectors:
+
+```yaml
+monitoring:
+  enabled: true
+  namespaceLabels:
+    kubernetes.io/metadata.name: monitoring
+  podLabels:
+    app.kubernetes.io/name: prometheus
+```
+
+The namespace and pod selectors are combined in a single NetworkPolicy peer; both must match. Empty selectors are rejected when enabled. Set labels to the actual managed Prometheus pods and configure its scrape target separately; this chart does not install a monitoring operator or ServiceMonitor. NetworkPolicy controls port access, so selected trusted scrapers can reach other backend HTTP paths too. Monitoring is disabled by default. Validate this with your CNI and any additional namespace policies; NetworkPolicy allows from separate policies are additive. Run `bash tests/helm/check.sh` to check connection-limit defaults/overrides and validation, default isolation, selector validation and digest requirements.

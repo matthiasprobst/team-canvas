@@ -56,6 +56,53 @@ class BoardStoreIntegrationTest {
     }
 
     @Test
+    fun `a round can finish after start consumed the daily budget without allowing unlimited controls`() {
+        val room = room()
+        dataSource.connection.use { c ->
+            c.update("""INSERT INTO command_receipts(board_id,receipt_scope,command_id,revision)
+                SELECT ?,'public',gen_random_uuid(),n FROM generate_series(1,?) n""",
+                room.board.id, BoardLimits.COMMANDS_PER_DAY - 1)
+        }
+        rounds.start(room.host, context(room.host))
+        val stop = context(room.host)
+        error("daily_limit") { store.patch(room.host, context(room.host), listOf(shape("over-budget")), emptyMap()) }
+        assertTrue(rounds.stop(room.guest, stop).transitioned)
+        assertTrue(rounds.stop(room.guest, stop).duplicate)
+        error("daily_limit") { rounds.stop(room.host, stop.copy(commandId = UUID.randomUUID())) }
+        error("daily_limit") { rounds.start(room.host, context(room.host)) }
+        error("daily_limit") { pages.select(room.host, context(room.host), stop.pageId) }
+        assertEquals("standard", store.snapshot(room.host).board.mode)
+        dataSource.connection.use { c ->
+            assertEquals(BoardLimits.COMMANDS_PER_DAY + 1, c.query(
+                "SELECT count(*) FROM command_receipts WHERE board_id=?", room.board.id,
+            ) { it.next(); it.getInt(1) })
+        }
+    }
+
+    @Test
+    fun `losing a live database advisory lock requires a fresh backend instance`() {
+        val source = object : javax.sql.DataSource by dataSource {
+            lateinit var held: java.sql.Connection
+            override fun getConnection(): java.sql.Connection = dataSource.connection.also { held = it }
+        }
+        val writer = SingleWriterGuard(source)
+        val replacement = SingleWriterGuard(dataSource)
+        try {
+            writer.start()
+            assertTrue(writer.ownsDatabase())
+            source.held.createStatement().use { it.execute("SELECT pg_advisory_unlock(1978842491)") }
+            assertFalse(writer.ownsDatabase())
+            replacement.start()
+            assertTrue(replacement.ownsDatabase())
+            assertFalse(writer.isAlive())
+            assertThrows(IllegalStateException::class.java) { writer.start() }
+        } finally {
+            writer.close()
+            replacement.close()
+        }
+    }
+
+    @Test
     fun `storage cleanup releases deleted object capacity and rejects stale writes and unauthorized cleanup`() {
         val room = room()
         val repository = BoardRepository(dataSource)

@@ -24,7 +24,7 @@ class ProtocolContractTest {
             SnapshotEvent(snapshot(board, null)), SnapshotEvent(snapshot(poker, round)),
             PatchEvent(id(5), 1, "private", emptyList(), emptyList()),
             CommandAck(commandId = id(5), revision = 1), RoundEvent(poker, round),
-            MetadataEvent("Renamed"), PresenceEvent(listOf(PresenceMember(id(2), "Me", "host"))),
+            MetadataEvent("Renamed"), PresenceEvent(listOf(PresenceMember(id(2), "Me", "host")), 1, 30),
             CursorEvent(id(2), 1.0, 2.0), PongEvent(), ErrorEvent(null, "unauthorized", "Please sign in."),
         )
         val expected = json.readTree(Files.readString(Path.of("../tests/fixtures/protocol.json")))
