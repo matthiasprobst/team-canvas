@@ -79,7 +79,7 @@ Snapshots include image IDs, not image bytes. Assets are fetched individually th
 
 | Resource | Limit |
 | --- | --- |
-| Open sockets | 200 total, 20 per company identity, 10 authenticated connections per board |
+| Open sockets | 200 total, 20 per company identity, 30 authenticated connections per canvas by default (configurable from 1 to 200 with `TEAM_CANVAS_MAX_CONNECTIONS_PER_CANVAS`) |
 | Initial socket authentication | 10 seconds |
 | Input bytes | 8 MB per connection and 64 MB globally per 10 seconds |
 | Socket messages | 60 per second; up to 20 mutating commands per second |
@@ -112,3 +112,19 @@ Database ownership loss makes the backend unready and rejects commands. Logs avo
 Compose persists the development realm in `keycloakdata` and exposes Keycloak directly on its own public URL and host port. Browser authorization and end-session endpoints use `KEYCLOAK_PUBLIC_URL`; the OIDC issuer uses the same URL, while token/JWKS endpoints use the internal service address with discovery disabled only in Compose. The app callback and post-logout URLs use `PUBLIC_ORIGIN`. Production uses discovery against company Keycloak, TLS, secure cookies, and an encrypted session/state secret. There is no supported authentication bypass.
 
 See [Keycloak realm import](https://www.keycloak.org/server/importExport), [hostname configuration](https://www.keycloak.org/server/hostname), and [Quarkus OIDC configuration](https://quarkus.io/guides/security-oidc-expanded-configuration/) for the upstream configuration contracts.
+
+## Product scope and design principles
+
+The core product is deliberately small:
+
+- **Multi-page canvases:** organize a session across pages, starting blank or copying an existing page.
+- **Poker mode:** collect private drawings and ideas, then let any member publish the saved contributions together. This is a contribution-and-reveal workflow, not a numeric estimation system.
+- **Saved and shared work:** persist acknowledged changes automatically and reopen canvases through an account dashboard; invite colleagues through authenticated sharing links.
+- **Reusable templates:** prepare layouts for Scrum sessions, retrospectives, or architecture discussions and start independent canvases from them.
+- **Required company SSO and privacy:** authenticate every participant and enforce ownership, membership, and private-draft visibility on the server.
+
+Easy company rollout and maintenance are design goals. Prefer a small number of services, established dependencies, explicit permissions, and changes that are easy to review. A new dependency must justify its maintenance cost; fewer dependencies must not mean reimplementing authentication or a drawing editor. Security fixes, reliable saving, safe upgrades, backup/restore, and clear operating instructions are part of the core scope.
+
+Keep additions tied to those workflows. Chat, video calls, AI assistants, task/project management, plugin marketplaces, complex approval workflows, and a general integration platform are outside the intended scope. Existing search, tags, and presence support finding and using canvases; they should stay lightweight.
+
+React/TypeScript and Excalidraw provide the browser UI; Kotlin/Quarkus provides one backend; PostgreSQL stores accounts, drawings, and uploaded images. Caddy serves the UI and proxies requests. Company deployments use an existing Keycloak identity provider. No Redis, message broker, separate image store, or application SaaS account is required. Tailwind and Vite are build tooling, and the UI is English.

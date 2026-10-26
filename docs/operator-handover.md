@@ -45,7 +45,7 @@ Use matching backend/frontend versions and immutable image references. The image
 
 ## Local qualification and company staging acceptance
 
-Start with the README's **separate disposable test stack**, then run frontend/backend checks, protocol/browser tests, [dump/restore rehearsal](operations-runbook.md#disposable-recovery-rehearsal), and capacity/workshop load profiles. This tests code and reference container behavior; it does not select a company hosting platform.
+Start with the [separate disposable test stack and development checks](local-development.md#development-and-checks), then run frontend/backend checks, protocol/browser tests, [dump/restore rehearsal](operations-runbook.md#disposable-recovery-rehearsal), and capacity/workshop load profiles. This tests code and reference container behavior; it does not select a company hosting platform.
 
 The company can implement staging independently using this runtime contract or the optional [Helm reference](../deploy/helm/README.md). Before production, its operators should exercise real TLS/proxy settings, two-user persistence and poker privacy, membership removal, app and IdP offboarding, expired-session recovery, process restart after writer loss, populated upgrades, backup restore and alert delivery. Record actual RPO/RTO and latency on the chosen infrastructure. Keep the acceptance evidence with the final image identities using the [release checklist](production-readiness.md).
 
