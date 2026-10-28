@@ -12,6 +12,7 @@ import { useBoardNavigation } from "./useBoardNavigation";
 import PageControls from "./PageControls";
 import CanvasStorageDialog from "./CanvasStorageDialog";
 import { ConfirmDialog } from "./Dialog";
+import CanvasTimer from "./CanvasTimer";
 
 export default function BoardEditor({ boardId, identity, user }: { boardId: string; identity: Identity; user: Account }) {
   const locationState = useLocation().state as { dashboard?: string } | null;
@@ -27,6 +28,8 @@ export default function BoardEditor({ boardId, identity, user }: { boardId: stri
     setEditor,
     pointer,
     control,
+    timerControl,
+    setTimer,
     createPage,
     selectPage,
     recoveryExported,
@@ -169,6 +172,7 @@ export default function BoardEditor({ boardId, identity, user }: { boardId: stri
           />
           <div className="workspace-divider" />
           <div className="canvas-tools">
+            {snapshot && <CanvasTimer timer={snapshot.timer} disabled={!online || view.busy || deleted} onAction={timerControl} onSetDuration={setTimer} />}
             {poker && (
               <span className="poker-status">
                 <span>●</span> Poker round

@@ -12,6 +12,7 @@ data class PatchEvent(
     val elements: List<JsonNode>, val fileIds: List<String>, val type: String = "patch",
 ) : ServerEvent
 data class RoundEvent(val board: BoardState, val round: RoundState?, val type: String = "round") : ServerEvent
+data class TimerEvent(val timer: CanvasTimerState, val type: String = "timer") : ServerEvent
 data class MetadataEvent(val name: String, val type: String = "metadata") : ServerEvent
 data class PresenceMember(val id: UUID, val name: String, val role: String)
 data class PresenceEvent(val participants: List<PresenceMember>, val connections: Int, val maxConnections: Int, val type: String = "presence") : ServerEvent

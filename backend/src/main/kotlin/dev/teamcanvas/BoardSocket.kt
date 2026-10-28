@@ -39,6 +39,7 @@ class RoomHub
 constructor(
     private val store: BoardStore,
     private val rounds: RoundService,
+    private val timers: CanvasTimerService,
     private val pages: CanvasPageService,
     private val json: ObjectMapper,
     private val access: CanvasAccess,
@@ -157,6 +158,25 @@ constructor(
                 }
                 access.authenticate(boardId, peer.token, peer.identity)
                 peer.lastAuthAt = System.currentTimeMillis()
+                if (type in setOf("timer_start", "timer_pause", "timer_reset", "timer_set")) {
+                    limits.require("writes:${session.id}", 20)
+                    val timer = when (type) {
+                        "timer_start" -> timers.start(boardId)
+                        "timer_pause" -> timers.pause(boardId)
+                        "timer_reset" -> timers.reset(boardId)
+                        else -> {
+                            val minutes = packet.get("minutes")
+                            val seconds = packet.get("seconds")
+                            if (minutes == null || !minutes.isIntegralNumber || !minutes.canConvertToInt() ||
+                                seconds == null || !seconds.isIntegralNumber || !seconds.canConvertToInt())
+                                throw ClientException("bad_request", "Timer minutes and seconds must be whole numbers.")
+                            timers.setDuration(boardId, minutes.asInt(), seconds.asInt())
+                        }
+                    }
+                    audience(boardId).forEach { send(it, TimerEvent(timer)) }
+                    metrics.counter("team.canvas.commands", "type", type).increment()
+                    return@synchronized
+                }
                 if (type == "draft") {
                     limits.require("draft:${session.id}", 5)
                     val key = packet.path("capability").asText()
@@ -242,6 +262,10 @@ constructor(
                             "patch",
                             "start_round",
                             "stop_round",
+                            "timer_start",
+                            "timer_pause",
+                            "timer_reset",
+                            "timer_set",
                             "create_page",
                             "select_page",
                             "resync",
@@ -259,7 +283,8 @@ constructor(
     }
 
     private fun snapshot(peer: Peer) {
-        val data = store.snapshot(peer.participant!!)
+        val participant = peer.participant!!
+        val data = store.snapshot(participant).copy(timer = timers.state(participant.boardId))
         modes[data.board.id] = data.board.mode
         send(peer, SnapshotEvent(data))
     }
@@ -340,6 +365,7 @@ constructor(
         synchronized(lock(id)) {
             action()
             modes.remove(id)
+            timers.remove(id)
             audience(id).forEach {
                 send(it, ErrorEvent(null, "canvas_deleted", "This canvas was deleted by its owner."))
                 it.closeAfterDrain(1008, "Canvas deleted")
@@ -368,6 +394,13 @@ constructor(
         }
 
     private fun sweep() {
+        for (boardId in timers.runningBoards()) {
+            synchronized(lock(boardId)) {
+                timers.expire(boardId)?.let { timer ->
+                    audience(boardId).forEach { send(it, TimerEvent(timer)) }
+                }
+            }
+        }
         for (peer in peers.values) {
             try {
                 val now = System.currentTimeMillis()

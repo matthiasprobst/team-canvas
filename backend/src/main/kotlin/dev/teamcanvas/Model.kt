@@ -57,6 +57,13 @@ data class StoredElement(val id: String, val body: JsonNode, val scope: String, 
 
 data class RoundState(val id: UUID)
 
+data class CanvasTimerState(
+    val durationMs: Long = 300_000,
+    val remainingMs: Long = 300_000,
+    val running: Boolean = false,
+    val startedAtEpochMs: Long? = null,
+)
+
 data class SceneSnapshot(
     val board: BoardState,
     val round: RoundState?,
@@ -67,6 +74,7 @@ data class SceneSnapshot(
     val role: String,
     val pages: List<CanvasSheet>,
     val pokerCreatedIds: List<String>,
+    val timer: CanvasTimerState = CanvasTimerState(),
 )
 
 data class CommandContext(val commandId: UUID, val epoch: Long, val roundId: UUID?, val pageId: UUID)

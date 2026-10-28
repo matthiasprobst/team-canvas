@@ -27,6 +27,12 @@ export interface CanvasSheet {
   position: number;
 }
 export interface RoundState { id: string; }
+export interface CanvasTimerState {
+  durationMs: number;
+  remainingMs: number;
+  running: boolean;
+  startedAtEpochMs: number | null;
+}
 export interface Snapshot {
   board: BoardState;
   round: RoundState | null;
@@ -35,6 +41,7 @@ export interface Snapshot {
   fileIds: string[];
   pages: CanvasSheet[];
   pokerCreatedIds: string[];
+  timer: CanvasTimerState;
   participantId: string;
   role: "host" | "guest";
 }
@@ -50,6 +57,7 @@ export interface CommandContext {
   pageId: string;
 }
 export type ControlType = "start_round" | "stop_round";
+export type TimerAction = "start" | "pause" | "reset";
 export type PageAction =
   | { type: "create_page"; copyCurrent: boolean; includePoker: boolean }
   | { type: "select_page"; targetPageId: string };
@@ -74,6 +82,7 @@ export type ServerEvent =
   | PatchEvent
   | { type: "ack"; commandId: string; revision: number }
   | { type: "round"; board: BoardState; round: RoundState | null }
+  | { type: "timer"; timer: CanvasTimerState }
   | { type: "presence"; participants: Presence[]; connections: number; maxConnections: number }
   | { type: "cursor"; id: string; x: number; y: number }
   | { type: "error"; commandId: string | null; code: string; message: string };

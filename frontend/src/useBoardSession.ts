@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { Identity } from "./api";
-import type { ControlType, Presence } from "./protocol";
+import type { ControlType, Presence, TimerAction } from "./protocol";
 import { BoardTransport } from "./boardTransport";
 import { EditorAdapter } from "./editorAdapter";
 import { SyncSession, type SessionView } from "./syncSession";
@@ -93,6 +93,8 @@ export function useBoardSession(boardId: string, identity: Identity) {
     [controller, transport]
   );
   const control = useCallback((type: ControlType) => controller.control(type), [controller]);
+  const timerControl = useCallback((action: TimerAction) => controller.timerControl(action), [controller]);
+  const setTimer = useCallback((minutes: number, seconds: number) => controller.setTimer(minutes, seconds), [controller]);
   const createPage = useCallback(
     (copyCurrent: boolean, includePoker: boolean) => controller.createPage(copyCurrent, includePoker),
     [controller]
@@ -110,6 +112,8 @@ export function useBoardSession(boardId: string, identity: Identity) {
     setEditor,
     pointer,
     control,
+    timerControl,
+    setTimer,
     createPage,
     selectPage,
     recoveryExported,

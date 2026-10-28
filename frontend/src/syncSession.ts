@@ -6,6 +6,7 @@ import type {
   PageAction,
   ServerEvent,
   Snapshot,
+  TimerAction,
 } from "./protocol";
 import { elementFingerprint, indexById, mergeById, normalizeElement, restoreLockedPublic } from "./syncCore";
 
@@ -171,6 +172,16 @@ export class SyncSession {
     this.queueAction({ type });
   }
 
+  timerControl(action: TimerAction) {
+    if (!this.online || !this.snapshot) return;
+    this.send({ type: `timer_${action}`, commandId: commandId() });
+  }
+
+  setTimer(minutes: number, seconds: number) {
+    if (!this.online || !this.snapshot) return;
+    this.send({ type: "timer_set", commandId: commandId(), minutes, seconds });
+  }
+
   createPage(copyCurrent: boolean, includePoker: boolean) {
     this.queueAction({ type: "create_page", copyCurrent, includePoker });
   }
@@ -261,6 +272,9 @@ export class SyncSession {
         if (!this.snapshot || event.board.epoch !== this.snapshot.board.epoch) break;
         this.snapshot = { ...this.snapshot, board: event.board, round: event.round };
         this.awaitingState = false;
+        break;
+      case "timer":
+        if (this.snapshot) this.snapshot = { ...this.snapshot, timer: event.timer };
         break;
       case "error":
         this.error = event.message;

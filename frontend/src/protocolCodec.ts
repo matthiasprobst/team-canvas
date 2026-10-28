@@ -20,6 +20,14 @@ const pages = (value: unknown) =>
   Array.isArray(value) &&
   value.every((page) => object(page) && typeof page.id === "string" && integer(page.position));
 const round = (value: unknown) => value === null || (object(value) && typeof value.id === "string");
+const timer = (value: unknown) =>
+  object(value) &&
+  typeof value.running === "boolean" &&
+  integer(value.durationMs) &&
+  integer(value.remainingMs) &&
+  (value.remainingMs as number) <= (value.durationMs as number) &&
+  (value.startedAtEpochMs === null || integer(value.startedAtEpochMs)) &&
+  (value.running === (value.startedAtEpochMs !== null));
 const elements = (value: unknown) =>
   Array.isArray(value) &&
   value.length <= 4000 &&
@@ -51,6 +59,7 @@ export function parseServerEvent(text: string): ServerEvent {
         object(data) &&
         board(data.board) &&
         round(data.round) &&
+        timer(data.timer) &&
         elements(data.elements) &&
         strings(data.publicIds) &&
         strings(data.fileIds) &&
@@ -73,6 +82,9 @@ export function parseServerEvent(text: string): ServerEvent {
       break;
     case "round":
       valid = board(value.board) && round(value.round);
+      break;
+    case "timer":
+      valid = timer(value.timer);
       break;
     case "presence":
       valid =

@@ -47,6 +47,14 @@ body { margin: 0; background: #f5f7fb; }
 .new-page-button:hover:not(:disabled) { border-color: #abc3ed; background: #eaf2ff; }
 .workspace-divider { height: 25px; flex: 0 0 1px; }
 .canvas-tools { flex: 1; justify-content: flex-end; gap: 9px; }
+.canvas-timer { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #dfe5ee; border-radius: 11px; padding: 3px; background: #f8faff; }
+.timer-readout { display: inline-flex; align-items: center; gap: 7px; min-width: 76px; padding: 0 7px; color: #334968; font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.timer-readout svg { color: #647a99; }
+.timer-readout input { width: 6.5ch; min-height: 31px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: inherit; font: inherit; font-variant-numeric: tabular-nums; text-align: center; }
+.timer-readout input:hover:not(:read-only):not(:disabled) { border-color: #b9c8dc; background: #fff; }
+.timer-readout input:focus-visible { outline: 2px solid #275fda; outline-offset: 1px; background: #fff; }
+.timer-readout input:disabled { opacity: .48; }
+.timer-button { width: 32px; min-height: 31px; padding: 5px; border-color: transparent; }
 .primary-action { min-width: 100px; border-color: #275fda; background: #275fda; color: #fff; box-shadow: 0 2px 5px #275fda26; }
 .primary-action:hover:not(:disabled) { border-color: #1c4cad; background: #1c4cad; }
 .poker-status, .poker-count, .locked-status { display: inline-flex; align-items: center; gap: 7px; min-height: 32px; border-radius: 9px; padding: 6px 10px; font-size: 11px; font-weight: 650; white-space: nowrap; }

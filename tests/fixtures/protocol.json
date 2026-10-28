@@ -22,6 +22,12 @@
         }
       ],
       "pokerCreatedIds": [],
+      "timer": {
+        "durationMs": 300000,
+        "remainingMs": 300000,
+        "running": false,
+        "startedAtEpochMs": null
+      },
       "participantId": "00000000-0000-4000-8000-000000000002",
       "role": "host"
     }
@@ -51,6 +57,12 @@
         }
       ],
       "pokerCreatedIds": [],
+      "timer": {
+        "durationMs": 300000,
+        "remainingMs": 300000,
+        "running": false,
+        "startedAtEpochMs": null
+      },
       "participantId": "00000000-0000-4000-8000-000000000002",
       "role": "host"
     }
