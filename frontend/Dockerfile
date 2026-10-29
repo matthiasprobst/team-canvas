@@ -7,21 +7,25 @@ COPY frontend/ ./
 RUN mkdir -p public/fonts && cp -r node_modules/@excalidraw/excalidraw/dist/prod/fonts/. public/fonts/
 RUN npm run build
 
-# Build Caddy with a patched Go toolchain and networking/router dependencies.
-# The upstream runtime image still supplies the small Alpine runtime filesystem.
+# Build the HTTP modules used by this proxy. Caddy's standard bundle includes
+# certificate authority modules that bring in unpatched go-jose v3.
 FROM golang:1.27.3-alpine AS proxy-build
-RUN go install github.com/caddyserver/xcaddy/cmd/xcaddy@v0.4.7
 WORKDIR /src
-RUN xcaddy build v2.11.7 \
-    --replace golang.org/x/net=golang.org/x/net@v0.60.0 \
-    --replace github.com/go-chi/chi/v5=github.com/go-chi/chi/v5@v5.4.0
+COPY frontend/proxy/ ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    cd go-jose-v3 && go test -run 'TestOversizedRSAJWKRejectedBeforeValidation|TestInvalidRSAPrimesRejectedBeforeValidation' .
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download && go mod verify && CGO_ENABLED=0 go build -mod=readonly -o /caddy .
 
-FROM caddy:2.11.7-alpine
-# Kubernetes runs Caddy on 8080 with all capabilities dropped. Remove the base
-# image's file capability so exec also works with an empty capability bounding set.
-# Refresh Alpine packages as well; the base tag can retain older runtime libraries.
-RUN apk upgrade --no-cache && setcap -r /usr/bin/caddy
-COPY --from=proxy-build /src/caddy /usr/bin/caddy
+# The proxy is statically linked; the runtime only needs its binary, assets,
+# config, and trust store. No package manager or file capability is needed.
+FROM scratch
+ENV XDG_CONFIG_HOME=/config XDG_DATA_HOME=/data
+COPY --from=proxy-build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=proxy-build /caddy /usr/bin/caddy
 COPY --from=build /app/dist /srv
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
 EXPOSE 80
+CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
