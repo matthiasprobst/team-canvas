@@ -52,6 +52,39 @@ Use separate browser profiles to try sharing between Alice and Bob. Passwords ca
 
 Data survives `docker compose down`. **`docker compose down -v` deletes the development database and Keycloak data.** The bundled setup and demo accounts are for development; use the [operator handover](docs/operator-handover.md) before admitting retained company data. For an existing database, read the [upgrade notes](docs/upgrading.md).
 
+## Develop locally
+
+For live reload of both the UI and API, use JDK 21, Maven 3.9+, Node.js 24 with npm 11.19.1, and Docker with Compose. Run the following commands from the repository root. First create `.env` as shown in [Try it locally](#try-it-locally), set a random `DB_PASSWORD`, and set `PUBLIC_ORIGIN=http://localhost:5173` **before Keycloak's first start**. Then start only the database and development identity provider:
+
+```sh
+docker compose up -d --wait db keycloak
+```
+
+In one terminal, load `.env` and start Quarkus:
+
+```sh
+set -a
+. ./.env
+set +a
+export JDBC_URL="jdbc:postgresql://localhost:${DB_PORT:-5432}/board"
+export OIDC_ISSUER="${KEYCLOAK_PUBLIC_URL}/realms/team-canvas"
+export OIDC_CLIENT_ID=team-canvas
+export OIDC_CLIENT_SECRET="$DEV_OIDC_CLIENT_SECRET"
+export OIDC_SESSION_SECRET="$DEV_OIDC_SESSION_SECRET"
+export TEAM_CANVAS_ALLOWED_ORIGINS=http://localhost:5173
+export QUARKUS_OIDC_AUTHENTICATION_COOKIE_FORCE_SECURE=false
+(cd backend && mvn quarkus:dev)
+```
+
+In another terminal, start Vite. It proxies `/api` and `/ws` to Quarkus on port `8080`:
+
+```sh
+npm ci --prefix frontend
+npm run dev --prefix frontend
+```
+
+Open **http://localhost:5173** and sign in with `alice` / `alice-dev-only` or `bob` / `bob-dev-only`. If you previously started the full Compose stack, stop its `backend` and `frontend` services before starting Quarkus, and update the existing Keycloak `team-canvas` client's redirect URI to `http://localhost:5173/api/login`, post-logout URI to `http://localhost:5173/login`, and web origin to `http://localhost:5173`; changing `.env` alone does not update an imported realm. See [local development and checks](docs/local-development.md#development-and-checks) for tests and troubleshooting. Do not run the host and Compose backends against the same database.
+
 ## Documentation
 
 | I want to… | Read |
