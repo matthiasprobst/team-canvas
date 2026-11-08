@@ -5,7 +5,7 @@ RUN mvn -B dependency:go-offline
 COPY src ./src
 RUN mvn -B -DskipTests package
 
-FROM eclipse-temurin:21-jre-noble
+FROM eclipse-temurin:25-jre-noble
 RUN apt-get update \
     && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends curl \
