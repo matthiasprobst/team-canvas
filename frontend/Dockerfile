@@ -9,7 +9,7 @@ RUN npm run build
 
 # Build the HTTP modules used by this proxy. Caddy's standard bundle includes
 # certificate authority modules that bring in unpatched go-jose v3.
-FROM golang:1.27.3-alpine AS proxy-build
+FROM golang:1.27.4-alpine AS proxy-build
 WORKDIR /src
 COPY frontend/proxy/ ./
 RUN --mount=type=cache,target=/go/pkg/mod \
