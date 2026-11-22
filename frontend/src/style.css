@@ -281,3 +281,20 @@ body { margin: 0; background: #f5f7fb; }
   .markdown-editor textarea { height: 25vh; }
   .markdown-editor-preview { max-height: 25vh; }
 }
+
+.assistant-review-mode { padding: 8px 14px; border-bottom: 1px solid #e8edf4; background: #f8faff; font-size: 11px; color: #405570; }
+.assistant-review-mode label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.assistant-review-mode select { max-width: 250px; padding: 4px; font-size: 11px; border: 1px solid #d7e4f8; border-radius: 5px; background: white; }
+.assistant-review-mode small { display: block; margin-top: 5px; font-size: 10px; line-height: 1.4; color: #647389; }
+.assistant-activity-label { font-size: 11px; color: #647389; line-height: 1.5; }
+.assistant-proposal-actions { flex-wrap: wrap; }
+.modal:has(.assistant-preview) { width: min(1120px, calc(100vw - 32px)); max-width: 1120px; }
+.assistant-preview { display: grid; gap: 12px; }
+.assistant-preview-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; color: #647389; }
+.assistant-preview-controls button[aria-pressed=true] { background: #edf3fc; border-color: #275fda; color: #275fda; }
+.assistant-preview-canvas { width: 100%; height: min(55vh, 520px); min-height: 240px; overflow: hidden; border: 1px solid #d7e4f8; border-radius: 8px; }
+.assistant-preview .dialog-actions { flex-wrap: wrap; }
+
+@media (max-width: 700px) {
+  .assistant-preview-canvas { height: min(38vh, 320px); min-height: 200px; }
+}

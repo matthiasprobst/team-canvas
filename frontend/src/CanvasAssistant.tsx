@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { MessageCircle, Send, Square, X, Sparkles, ArrowUpRight } from "lucide-react";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
@@ -6,6 +6,11 @@ import type { SessionView } from "./syncSession";
 import type { BoardState } from "./protocol";
 import { assistantRequest, type AssistantCanvas, type AssistantProposal, type AssistantReply } from "./assistant";
 import { compileAssistantProposal, showAssistantObjects } from "./assistantEditor";
+
+import { assistantHistory } from "./assistantHistory";
+import { elementFingerprint } from "./syncCore";
+import type { PreviewSnapshot } from "./AssistantPreview";
+const AssistantPreview = lazy(() => import("./AssistantPreview"));
 
 interface Message { role: "user" | "assistant"; content: string; referenceIds?: string[]; revision?: number; proposalId?: string; }
 interface Props {
@@ -15,7 +20,8 @@ interface Props {
   applyAssistant: (id: string, elements: readonly ExcalidrawElement[]) => void;
 }
 
-function ProposalCard({ proposal, ready, applyingId, apply, dismiss, objects }: {
+function ProposalCard({ proposal, ready, applyingId, apply, dismiss, objects, preview }: {
+  preview: (proposal: AssistantProposal) => void;
   objects?: AssistantCanvas["objects"];
   proposal: AssistantProposal; ready: boolean; applyingId: string | null;
   apply: (proposal: AssistantProposal) => void; dismiss: (proposal: AssistantProposal) => Promise<void>;
@@ -25,6 +31,7 @@ function ProposalCard({ proposal, ready, applyingId, apply, dismiss, objects }: 
     <p>{proposal.message}</p>
     <ul>{proposal.actions.map((action, index) => <li key={index}><span className="assistant-swatch" style={{ backgroundColor: action.color }} />{action.type === "move_object" ? `Move ${action.text || objects?.find(object => object.id === action.id)?.text.slice(0, 80) || action.id} to (${Math.round(action.x)}, ${Math.round(action.y)})` : action.type === "label_connection" ? `Connection label: ${action.text}` : `${action.type === "create_shape" ? `create ${action.shape}` : action.type.replaceAll("_", " ")}: ${action.text || action.shape}`}</li>)}</ul>
     {proposal.status === "pending" && <div className="assistant-proposal-actions">
+      <button className="button" disabled={!ready || !!applyingId} onClick={() => preview(proposal)}>Preview</button>
       <button className="button primary" disabled={!ready || !!applyingId} onClick={() => apply(proposal)}>{applyingId === proposal.id ? "Saving…" : "Add to canvas"}</button>
       <button className="button" disabled={!!applyingId} onClick={() => { void dismiss(proposal); }}>Dismiss</button>
     </div>}
@@ -36,6 +43,13 @@ export default function CanvasAssistant({ board, view, editorRef, applyAssistant
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [summary, setSummary] = useState("");
+  const [includeSaved, setIncludeSaved] = useState(true);
+  const [preview, setPreview] = useState<PreviewSnapshot | null>(null);
+  const previewGeneration = useRef(0);
+  const [autoAccept, setAutoAccept] = useState(false);
+  const autoAcceptRef = useRef(false);
+  const [autoProposal, setAutoProposal] = useState<AssistantProposal | null>(null);
+  const autoAttempted = useRef(new Set<string>());
   const [proposals, setProposals] = useState<AssistantProposal[]>([]);
   const [canvas, setCanvas] = useState<AssistantCanvas | null>(null);
   const [configured, setConfigured] = useState<boolean | null>(null);
@@ -81,6 +95,7 @@ export default function CanvasAssistant({ board, view, editorRef, applyAssistant
     } else if (applyingId && !view.unsaved && view.error) {
       setError(view.error);
       setApplyingId(null);
+      setAutoAccept(false); autoAcceptRef.current = false; setAutoProposal(null);
     }
   }, [applyingId, view.lastAcknowledgedCommandId, view.unsaved, view.error]);
 
@@ -88,11 +103,12 @@ export default function CanvasAssistant({ board, view, editorRef, applyAssistant
     const text = input.trim();
     if (text === "/new") {
       requestRef.current?.abort(); requestRef.current = null;
-      setMessages([]); setSummary(""); setInput(""); setError(""); setLoading(false);
+      setMessages([]); setSummary(""); setIncludeSaved(false); setAutoAccept(false); autoAcceptRef.current = false; setAutoProposal(null); setInput(""); setError(""); setLoading(false);
       return;
     }
     if (text.startsWith("/") && text !== "/compact") { setError("Available commands: /new and /compact."); return; }
-    if (text === "/compact" && !messages.length && !summary) { setError("There is no conversation to compact yet."); return; }
+    const history = assistantHistory(messages, summary, proposals, includeSaved, text === "/compact");
+    if (text === "/compact" && !history.length) { setError("There is no conversation to compact yet."); return; }
     if (!text || !ready || loading || configured !== true || view.unsaved) return;
     const selectedIds = context === "selection" && text !== "/compact" ? Object.keys(editorRef.current?.getAppState().selectedElementIds ?? {}) : [];
     if (text !== "/compact" && context === "selection" && !selectedIds.length) { setError("Select objects on the canvas first, or choose Current page."); return; }
@@ -105,31 +121,36 @@ export default function CanvasAssistant({ board, view, editorRef, applyAssistant
     try {
       const reply = await assistantRequest<AssistantReply>(board, "", controller.signal, {
         message: text, pageId: board.pageId, epoch: board.epoch, selectedIds,
-        history: [...(summary ? [{ role: "assistant", content: summary }] : []), ...messages.filter(message => message.content !== summary).slice(-(text === "/compact" ? 24 : summary ? 11 : 12)).map(({ role, content }) => ({ role, content: content.slice(0, 8000) }))],
+        history,
       });
       if (controller.signal.aborted) return;
       if (text === "/compact") {
-        setSummary(reply.message); setMessages([{ role: "assistant", content: reply.message }]); return;
+        setSummary(reply.message); setIncludeSaved(false); setMessages([{ role: "assistant", content: reply.message }]); return;
       }
       setMessages(previous => [...previous, { role: "assistant", content: reply.message, referenceIds: reply.referenceIds, revision: reply.canvas?.board.revision, proposalId: reply.proposal?.id }]);
       if (reply.canvas && reply.canvas.scope !== "selection") setCanvas(reply.canvas);
+      if (reply.proposal && autoAcceptRef.current) setAutoProposal(reply.proposal);
       if (reply.proposal) setProposals(previous => [reply.proposal!, ...previous.filter(proposal => proposal.id !== reply.proposal!.id)]);
     } catch (problem) {
-      if (!controller.signal.aborted) { setError(problem instanceof Error ? problem.message : "The assistant request failed."); setInput(text); }
+      if (!controller.signal.aborted) {
+        setError(problem instanceof Error ? problem.message : "The assistant request failed."); setInput(text);
+        setAutoAccept(false); autoAcceptRef.current = false; setAutoProposal(null);
+      }
     } finally {
       if (requestRef.current === controller) { requestRef.current = null; setLoading(false); }
     }
   }
 
   function apply(proposal: AssistantProposal) {
-    if (!editorRef.current || !ready || view.unsaved || applyingId) return;
+    if (!editorRef.current || !ready || view.unsaved || applyingId) return false;
     try {
       const result = compileAssistantProposal(editorRef.current, proposal, board);
       setError("");
       setApplyingId(proposal.id);
       applyAssistant(proposal.id, result.elements);
       showAssistantObjects(editorRef.current, result.createdIds);
-    } catch (problem) { setApplyingId(null); setError(problem instanceof Error ? problem.message : "Could not apply the proposal."); }
+      return true;
+    } catch (problem) { setApplyingId(null); setError(problem instanceof Error ? problem.message : "Could not apply the proposal."); return false; }
   }
 
   async function dismiss(proposal: AssistantProposal) {
@@ -139,9 +160,34 @@ export default function CanvasAssistant({ board, view, editorRef, applyAssistant
     } catch (problem) { setError(problem instanceof Error ? problem.message : "Could not dismiss the proposal."); }
   }
 
-  function close() { setOpen(false); launcher.current?.focus(); }
+  function openPreview(proposal: AssistantProposal) {
+    const editor = editorRef.current;
+    if (!editor || !ready || view.unsaved || applyingId) return;
+    try {
+      const result = compileAssistantProposal(editor, proposal, board);
+      const before = editor.getSceneElementsIncludingDeleted();
+      setPreview({ proposal, before: structuredClone(before), after: structuredClone(result.elements),
+        changedIds: result.createdIds, files: editor.getFiles(), signature: before.map(elementFingerprint).join("|"), generation: ++previewGeneration.current });
+      setAutoAccept(false); autoAcceptRef.current = false; setAutoProposal(null); setError("");
+    } catch (problem) { setError(problem instanceof Error ? problem.message : "Could not preview the proposal."); }
+  }
 
+  useEffect(() => {
+    if (!open || !autoAccept || !autoProposal || !ready || view.unsaved || applyingId || preview) return;
+    setAutoProposal(null);
+    if (autoAttempted.current.has(autoProposal.id)) return;
+    autoAttempted.current.add(autoProposal.id);
+    if (!apply(autoProposal)) { setAutoAccept(false); autoAcceptRef.current = false; }
+  });
+
+  function close() { setOpen(false); setAutoAccept(false); autoAcceptRef.current = false; setAutoProposal(null); launcher.current?.focus(); }
+
+  const currentSignature = preview ? (editorRef.current?.getSceneElementsIncludingDeleted() ?? []).map(elementFingerprint).join("|") : "";
+  const previewCurrent = !!preview && currentSignature === preview.signature && proposals.some(proposal => proposal.id === preview.proposal.id && proposal.status === "pending");
   return <div className="canvas-assistant shell">
+    {preview && <Suspense fallback={<p role="status">Loading preview…</p>}><AssistantPreview snapshot={preview} current={previewCurrent}
+      ready={ready && !view.unsaved && !applyingId} close={() => setPreview(null)} refresh={() => openPreview(preview.proposal)}
+      approve={() => { if (previewCurrent && apply(preview.proposal)) setPreview(null); }} /></Suspense>}
     {open && <section id="canvas-assistant-panel" className="assistant-panel" aria-label="AI assistant" onKeyDown={event => { if (event.key === "Escape") { event.stopPropagation(); close(); } }}>
       <header className="assistant-heading">
         <div><Sparkles size={17} /><strong>Canvas assistant</strong></div>
@@ -153,9 +199,17 @@ export default function CanvasAssistant({ board, view, editorRef, applyAssistant
         </select></label>
         <span>{board.mode === "poker" ? "Shared + your private draft" : "Saved canvas content"}</span>
       </div>
+      <div className="assistant-review-mode">
+        <label>Changes <select aria-label="AI approval mode" value={autoAccept ? "auto" : "manual"} disabled={!!applyingId}
+          onChange={event => { const enabled = event.target.value === "auto"; setAutoAccept(enabled); autoAcceptRef.current = enabled; setAutoProposal(null); }}>
+          <option value="manual">Review manually</option><option value="auto">Auto-accept new chat changes</option>
+        </select></label>
+        <small>{autoAccept ? "New changes from this chat apply automatically while it stays open. Saved and external proposals still need review." : "Preview proposals before approval. Auto-accept resets when you close the chat or start a new conversation."}</small>
+      </div>
       <div className="assistant-content">
+        {proposals.some(proposal => !messages.some(message => message.proposalId === proposal.id)) && <p className="assistant-activity-label">Saved proposal activity · These cards are not a complete chat transcript.</p>}
         {proposals.filter(proposal => proposal.status !== "dismissed" && !messages.some(message => message.proposalId === proposal.id)).map(proposal =>
-          <ProposalCard key={proposal.id} proposal={proposal} ready={ready && !view.unsaved} applyingId={applyingId} apply={apply} dismiss={dismiss} objects={canvas?.objects} />)}
+          <ProposalCard key={proposal.id} proposal={proposal} ready={ready && !view.unsaved} applyingId={applyingId} apply={apply} dismiss={dismiss} objects={canvas?.objects} preview={openPreview} />)}
         {messages.length === 0 && <div className="assistant-welcome">
           <span className="assistant-symbol"><Sparkles size={24} /></span>
           <h2>Think together. Draw together.</h2>
@@ -172,7 +226,7 @@ export default function CanvasAssistant({ board, view, editorRef, applyAssistant
             </button>)}
             {message.revision !== undefined && message.revision < board.revision && <small>Canvas changed since this answer.</small>}
             {proposals.filter(proposal => proposal.id === message.proposalId && proposal.status !== "dismissed").map(proposal =>
-              <ProposalCard key={proposal.id} proposal={proposal} ready={ready && !view.unsaved} applyingId={applyingId} apply={apply} dismiss={dismiss} objects={canvas?.objects} />)}
+              <ProposalCard key={proposal.id} proposal={proposal} ready={ready && !view.unsaved} applyingId={applyingId} apply={apply} dismiss={dismiss} objects={canvas?.objects} preview={openPreview} />)}
           </article>)}
         </div>
         {loading && <p className="assistant-thinking" role="status">Thinking…</p>}

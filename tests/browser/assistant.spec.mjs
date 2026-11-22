@@ -360,3 +360,109 @@ test('chat commands preserve canvas data while layout and connection labels upda
     await context.close();
   }
 });
+
+test('restored activity compacts and previews stay read-only with explicit auto-accept', async ({ browser }, testInfo) => {
+  test.setTimeout(240_000);
+  const alice = await browser.newContext({ baseURL: base });
+  const bob = await browser.newContext({ baseURL: base });
+  let board;
+  try {
+    const a = await alice.newPage(), b = await bob.newPage();
+    const errors = [], consoleProblems = [];
+    for (const page of [a, b]) {
+      page.on('pageerror', error => errors.push(error.message));
+      page.on('console', message => { if (['warning','error'].includes(message.type())) consoleProblems.push(message.text()); });
+    }
+    await login(a, 'alice'); await login(b, 'bob');
+    consoleProblems.length = 0;
+    board = await api(alice, '/api/boards', { name: `Preview and approval ${Date.now()}` });
+    const invite = await api(alice, `/api/boards/${board.id}/invitations`, {});
+    await api(bob, `/api/boards/${board.id}/join`, { inviteKey: invite.inviteKey });
+    const remote = scene(b);
+    await Promise.all([a.goto(`/b/${board.id}`), b.goto(`/b/${board.id}`)]);
+    await expect(a).toHaveTitle('Team Canvas');
+    await a.getByRole('button', { name: 'Open AI assistant', exact: true }).click();
+    const mode = a.getByRole('combobox', { name: 'AI approval mode', exact: true });
+    await expect(mode).toHaveValue('manual');
+    await ask(a, 'Create a markdown ticket');
+    const pending = a.getByRole('article', { name: 'Canvas proposal' }).filter({ has: a.getByRole('button', { name: 'Preview', exact: true }) });
+    await pending.getByRole('button', { name: 'Preview', exact: true }).click();
+    const preview = a.getByRole('dialog', { name: 'Preview canvas changes', exact: true });
+    await expect(preview).toBeVisible();
+    await expect(preview.getByRole('heading', { name: 'CANVAS-42: Markdown notes', exact: true })).toBeVisible();
+    expect(remote.live()).toHaveLength(0);
+    await preview.getByRole('button', { name: 'Before', exact: true }).click();
+    await expect(preview.getByRole('heading', { name: 'CANVAS-42: Markdown notes', exact: true })).toHaveCount(0);
+    await preview.getByRole('button', { name: 'After', exact: true }).click();
+    await expect(preview.getByRole('heading', { name: 'CANVAS-42: Markdown notes', exact: true })).toBeVisible();
+    await a.screenshot({ path: testInfo.outputPath('assistant-preview-desktop.png') });
+    await preview.getByRole('button', { name: 'Back to chat', exact: true }).click();
+    expect(remote.live()).toHaveLength(0);
+    await pending.getByRole('button', { name: 'Preview', exact: true }).click();
+    await preview.getByRole('button', { name: 'Approve changes', exact: true }).click();
+    await expect(preview).toBeHidden();
+    await expect.poll(() => remote.live().filter(element => element.customData?.teamCanvasKind === 'markdown').length).toBe(1);
+    await a.getByRole('button', { name: /^Undo/ }).click();
+    await expect.poll(() => remote.live().filter(element => element.customData?.teamCanvasKind === 'markdown').length).toBe(0);
+    await a.getByRole('button', { name: /^Redo/ }).click();
+    await expect.poll(() => remote.live().filter(element => element.customData?.teamCanvasKind === 'markdown').length).toBe(1);
+    await ask(a, 'Create a blue ellipse labelled API');
+    // A new SSO session restores proposals, while conversational messages are empty.
+    await alice.clearCookies();
+    await login(a, 'alice');
+    consoleProblems.length = 0;
+    const chatRequests = [];
+    a.on('request', request => { if (request.method() === 'POST' && request.url().endsWith(`/api/boards/${board.id}/assistant`)) chatRequests.push(request.postDataJSON()); });
+    await a.goto(`/b/${board.id}`);
+    await a.getByRole('button', { name: 'Open AI assistant', exact: true }).click();
+    await expect(a.getByText(/Saved proposal activity ·/)).toBeVisible();
+    await expect(a.getByRole('log').getByText('You', { exact: true })).toHaveCount(0);
+    await ask(a, '/compact');
+    await expect(a.getByRole('log')).toContainText('Conversation summary:');
+    const restored = chatRequests.at(-1).history.map(turn => turn.content).join('\n');
+    expect(restored).toContain('Saved proposal activity'); expect(restored).toContain('APPLIED'); expect(restored).toContain('PENDING');
+    // Enabling auto does not apply previously saved pending changes.
+    await mode.selectOption('auto');
+    expect(remote.live().some(element => element.type === 'ellipse')).toBe(false);
+    await ask(a, 'Create a heading: Sprint retrospective');
+    await expect.poll(() => remote.live().some(element => element.type === 'text' && element.text === 'Sprint retrospective')).toBe(true);
+    expect(remote.live().some(element => element.type === 'ellipse')).toBe(false);
+    await a.getByRole('button', { name: 'Close assistant', exact: true }).click();
+    await a.getByRole('button', { name: 'Open AI assistant', exact: true }).click();
+    await expect(mode).toHaveValue('manual');
+    await mode.selectOption('auto'); await ask(a, '/new'); await expect(mode).toHaveValue('manual');
+    // A collaborator's edit invalidates an open preview without touching the proposal.
+    await pending.getByRole('button', { name: 'Preview', exact: true }).click();
+    await b.getByRole('button', { name: 'Sticky note', exact: true }).click();
+    await expect(preview.getByText('The canvas changed. Refresh the preview before approving.')).toBeVisible();
+    await expect(preview.getByRole('button', { name: 'Approve changes', exact: true })).toBeDisabled();
+    await preview.getByRole('button', { name: 'Refresh preview', exact: true }).click();
+    await expect(preview.getByRole('button', { name: 'Approve changes', exact: true })).toBeEnabled();
+    await a.setViewportSize({ width: 390, height: 844 });
+    await expect(preview).toBeVisible();
+    const bounds = await preview.boundingBox();
+    expect(bounds.x).toBeGreaterThanOrEqual(0); expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
+    await expect(preview.getByRole('button', { name: 'Scroll back to content', exact: true })).toBeHidden();
+    await expect(preview.getByRole('button', { name: 'Approve changes', exact: true })).toBeInViewport();
+    await a.screenshot({ path: testInfo.outputPath('assistant-preview-mobile.png') });
+    await preview.getByRole('button', { name: 'Back to chat', exact: true }).click();
+    expect(remote.live().some(element => element.type === 'ellipse')).toBe(false);
+    const beforeRejectedAuto = remote.live().map(element => element.id).sort();
+    await a.route(`**/api/boards/${board.id}/assistant`, async route => {
+      const response = await route.fetch();
+      const result = await response.json();
+      result.proposal.epoch = -1;
+      await route.fulfill({ response, json: result });
+    }, { times: 1 });
+    await mode.selectOption('auto');
+    await ask(a, 'Create three notes: Research, Design, Build');
+    await expect(mode).toHaveValue('manual');
+    await expect(a.getByRole('alert')).toContainText('earlier page or poker round');
+    expect(remote.live().map(element => element.id).sort()).toEqual(beforeRejectedAuto);
+    await expect(a.locator('vite-error-overlay')).toHaveCount(0);
+    expect(errors).toEqual([]); expect(consoleProblems).toEqual([]);
+  } finally {
+    if (board) await api(alice, `/api/boards/${board.id}`, undefined, 'DELETE', 204);
+    await alice.close(); await bob.close();
+  }
+});
