@@ -44,7 +44,7 @@ jobs:
       - run: mvn -B verify
         working-directory: backend
   containers:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       COMPOSE_PROJECT_NAME: team-canvas-ci-readiness
     steps:
