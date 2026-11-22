@@ -306,3 +306,57 @@ test('MCP creates connected Markdown ticket proposals and chat refines their sou
     await context.close();
   }
 });
+
+test('chat commands preserve canvas data while layout and connection labels update existing elements', async ({ browser }, testInfo) => {
+  const context = await browser.newContext({ baseURL: base });
+  let board;
+  try {
+    const page = await context.newPage();
+    await login(page, 'alice');
+    board = await api(context, '/api/boards', { name: `Chat controls ${Date.now()}` });
+    const observed = scene(page);
+    const requests = [];
+    page.on('request', request => { if (request.method() === 'POST' && request.url().endsWith(`/api/boards/${board.id}/assistant`)) requests.push(request.postDataJSON()); });
+    await page.goto(`/b/${board.id}`);
+    await page.getByRole('button', { name: 'Open AI assistant', exact: true }).click();
+    await ask(page, 'Create three notes: Research, Design, Build'); await addLatest(page);
+    const noteIds = observed.live().filter(element => element.customData?.teamCanvasKind === 'note').map(element => element.id).sort();
+    await ask(page, 'Which notes should be connected?'); await addLatest(page);
+    await ask(page, 'Arrange these notes into a useful flow'); await addLatest(page);
+    const notes = observed.live().filter(element => noteIds.includes(element.id));
+    expect(notes.map(element => element.id).sort()).toEqual(noteIds);
+    for (let i = 0; i < notes.length; i++) for (let j = i + 1; j < notes.length; j++) {
+      const a = notes[i], b = notes[j];
+      expect(a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y).toBe(true);
+    }
+    const arrowId = observed.live().find(element => element.type === 'arrow').id;
+    const token = await oauthToken(context);
+    const added = await mcp(context, token, 'tools/call', { name: 'propose_changes', arguments: { boardId: board.id, message: 'An unlabelled connection to name.', actions: [{ type: 'connect', sourceId: noteIds[0], targetId: noteIds[1] }] } });
+    expect(added.isError).toBe(false);
+    await addLatest(page);
+    await ask(page, 'Name the connections to explain their relationship'); await addLatest(page);
+    await expect.poll(() => observed.live().find(element => element.containerId === arrowId)?.text).toBe('supports planning');
+    expect(observed.live().filter(element => element.type === 'arrow')).toHaveLength(2);
+    for (const arrow of observed.live().filter(element => element.type === 'arrow')) expect(observed.live().find(element => element.containerId === arrow.id)?.text).toBe('supports planning');
+    for (let turn = 0; turn < 7; turn++) await ask(page, 'How many notes are on this page?');
+    await ask(page, '/compact');
+    expect(requests.at(-1).history.length).toBeGreaterThan(12);
+    await expect(page.getByRole('log')).toContainText('Conversation summary:');
+    await page.screenshot({ path: testInfo.outputPath('chat-layout-and-compaction.png') });
+    await ask(page, 'How many notes are on this page?');
+    expect(requests.at(-1).history[0].content).toContain('Conversation summary:');
+    const before = JSON.stringify(observed.live());
+    const count = requests.length;
+    await ask(page, '/new');
+    await expect(page.getByRole('log').getByText('Conversation summary:', { exact: false })).toHaveCount(0);
+    expect(requests).toHaveLength(count);
+    expect(JSON.stringify(observed.live())).toBe(before);
+    await ask(page, 'How many notes are on this page?');
+    expect(requests.at(-1).history).toEqual([]);
+    await page.reload();
+    await expect.poll(() => observed.live().find(element => element.containerId === arrowId)?.text).toBe('supports planning');
+  } finally {
+    if (board) await api(context, `/api/boards/${board.id}`, undefined, 'DELETE', 204);
+    await context.close();
+  }
+});

@@ -13,7 +13,7 @@ export interface AssistantCanvas {
   objects: CanvasObject[];
 }
 export interface CanvasAction {
-  type: "create_note" | "create_markdown" | "create_shape" | "create_text" | "connect" | "update_text";
+  type: "create_note" | "create_markdown" | "create_shape" | "create_text" | "connect" | "update_text" | "move_object" | "label_connection";
   id: string; text: string; shape: "rectangle" | "ellipse" | "diamond"; color: string;
   sourceId: string | null; targetId: string | null; x: number; y: number; width: number; height: number;
 }

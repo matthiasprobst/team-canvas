@@ -7,6 +7,10 @@ createServer(async (request, response) => {
   let body = '';
   for await (const chunk of request) body += chunk;
   const { messages } = JSON.parse(body);
+  if (messages[0].content.startsWith('Summarize this Team Canvas')) {
+    response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'Conversation summary: Keep the Research, Design and Build workflow. Research informs Design. Continue refining the existing notes.' } }] }));
+    return;
+  }
   const context = JSON.parse(messages[0].content.split('Current saved canvas: ')[1]);
   const last = messages.at(-1);
   const question = messages.findLast(message => message.role === 'user').content;
@@ -18,6 +22,8 @@ createServer(async (request, response) => {
     const result = JSON.parse(last.content);
     message = { role: 'assistant', content: `The notes say: ${result.objects.map(object => object.text).join('; ')}.` };
   } else if (/how many|number of|count/i.test(question)) message = tool('count_objects');
+  else if (/arrange|rearrange|tidy/i.test(question)) message = tool('propose_changes', { message: 'Arrange existing notes in a readable flow.', actions: [{ type: 'arrange_objects', ids: context.objects.filter(object => object.kind === 'note').map(object => object.id), layout: 'flow' }] });
+  else if (/name.*connection|label.*connection/i.test(question)) message = tool('propose_changes', { message: 'Label the existing relationships.', actions: context.objects.filter(object => object.kind === 'connection').map(object => ({ type: 'label_connection', id: object.id, text: 'supports planning' })) });
   else if (/refine.*markdown/i.test(question)) message = tool('propose_changes', { message: 'Refine the ticket acceptance criteria.', actions: [{ type: 'update_text', id: context.objects.find(object => object.format === 'markdown').id, text: '# Refined ticket\n\n- [ ] Verify permissions\n- [x] Document requirements' }] });
   else if (/markdown|ticket/i.test(question)) message = tool('propose_changes', { message: 'Add a structured Markdown ticket.', actions: [{ type: 'create_markdown', id: 'ticket', text: '# CANVAS-42: Markdown notes\n\n## Acceptance criteria\n- [ ] Readable ticket\n- [x] Preserve source\n\n| Field | Value |\n| --- | --- |\n| Status | Ready |' }] });
   else if (/what.*written|read.*notes/i.test(question)) message = tool('read_objects', { ids: context.objects.filter(object => object.kind === 'note').map(object => object.id) });

@@ -15,14 +15,15 @@ interface Props {
   applyAssistant: (id: string, elements: readonly ExcalidrawElement[]) => void;
 }
 
-function ProposalCard({ proposal, ready, applyingId, apply, dismiss }: {
+function ProposalCard({ proposal, ready, applyingId, apply, dismiss, objects }: {
+  objects?: AssistantCanvas["objects"];
   proposal: AssistantProposal; ready: boolean; applyingId: string | null;
   apply: (proposal: AssistantProposal) => void; dismiss: (proposal: AssistantProposal) => Promise<void>;
 }) {
   return <article className="assistant-proposal" data-proposal-id={proposal.id} aria-label="Canvas proposal">
     <strong>{proposal.status === "applied" ? "Added to canvas" : "Suggested canvas changes"}</strong>
     <p>{proposal.message}</p>
-    <ul>{proposal.actions.map((action, index) => <li key={index}><span className="assistant-swatch" style={{ backgroundColor: action.color }} />{action.type === "create_shape" ? `create ${action.shape}` : action.type.replaceAll("_", " ")}: {action.text || action.shape}</li>)}</ul>
+    <ul>{proposal.actions.map((action, index) => <li key={index}><span className="assistant-swatch" style={{ backgroundColor: action.color }} />{action.type === "move_object" ? `Move ${action.text || objects?.find(object => object.id === action.id)?.text.slice(0, 80) || action.id} to (${Math.round(action.x)}, ${Math.round(action.y)})` : action.type === "label_connection" ? `Connection label: ${action.text}` : `${action.type === "create_shape" ? `create ${action.shape}` : action.type.replaceAll("_", " ")}: ${action.text || action.shape}`}</li>)}</ul>
     {proposal.status === "pending" && <div className="assistant-proposal-actions">
       <button className="button primary" disabled={!ready || !!applyingId} onClick={() => apply(proposal)}>{applyingId === proposal.id ? "Saving…" : "Add to canvas"}</button>
       <button className="button" disabled={!!applyingId} onClick={() => { void dismiss(proposal); }}>Dismiss</button>
@@ -34,6 +35,7 @@ export default function CanvasAssistant({ board, view, editorRef, applyAssistant
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
+  const [summary, setSummary] = useState("");
   const [proposals, setProposals] = useState<AssistantProposal[]>([]);
   const [canvas, setCanvas] = useState<AssistantCanvas | null>(null);
   const [configured, setConfigured] = useState<boolean | null>(null);
@@ -84,21 +86,31 @@ export default function CanvasAssistant({ board, view, editorRef, applyAssistant
 
   async function send() {
     const text = input.trim();
+    if (text === "/new") {
+      requestRef.current?.abort(); requestRef.current = null;
+      setMessages([]); setSummary(""); setInput(""); setError(""); setLoading(false);
+      return;
+    }
+    if (text.startsWith("/") && text !== "/compact") { setError("Available commands: /new and /compact."); return; }
+    if (text === "/compact" && !messages.length && !summary) { setError("There is no conversation to compact yet."); return; }
     if (!text || !ready || loading || configured !== true || view.unsaved) return;
-    const selectedIds = context === "selection" ? Object.keys(editorRef.current?.getAppState().selectedElementIds ?? {}) : [];
-    if (context === "selection" && !selectedIds.length) { setError("Select objects on the canvas first, or choose Current page."); return; }
+    const selectedIds = context === "selection" && text !== "/compact" ? Object.keys(editorRef.current?.getAppState().selectedElementIds ?? {}) : [];
+    if (text !== "/compact" && context === "selection" && !selectedIds.length) { setError("Select objects on the canvas first, or choose Current page."); return; }
     const controller = new AbortController();
     requestRef.current = controller;
     setError("");
     setInput("");
     setLoading(true);
-    setMessages(previous => [...previous.slice(-23), { role: "user", content: text }]);
+    if (text !== "/compact") setMessages(previous => [...previous.slice(-23), { role: "user", content: text }]);
     try {
       const reply = await assistantRequest<AssistantReply>(board, "", controller.signal, {
         message: text, pageId: board.pageId, epoch: board.epoch, selectedIds,
-        history: messages.slice(-12).map(({ role, content }) => ({ role, content: content.slice(0, 8000) })),
+        history: [...(summary ? [{ role: "assistant", content: summary }] : []), ...messages.filter(message => message.content !== summary).slice(-(text === "/compact" ? 24 : summary ? 11 : 12)).map(({ role, content }) => ({ role, content: content.slice(0, 8000) }))],
       });
       if (controller.signal.aborted) return;
+      if (text === "/compact") {
+        setSummary(reply.message); setMessages([{ role: "assistant", content: reply.message }]); return;
+      }
       setMessages(previous => [...previous, { role: "assistant", content: reply.message, referenceIds: reply.referenceIds, revision: reply.canvas?.board.revision, proposalId: reply.proposal?.id }]);
       if (reply.canvas && reply.canvas.scope !== "selection") setCanvas(reply.canvas);
       if (reply.proposal) setProposals(previous => [reply.proposal!, ...previous.filter(proposal => proposal.id !== reply.proposal!.id)]);
@@ -143,7 +155,7 @@ export default function CanvasAssistant({ board, view, editorRef, applyAssistant
       </div>
       <div className="assistant-content">
         {proposals.filter(proposal => proposal.status !== "dismissed" && !messages.some(message => message.proposalId === proposal.id)).map(proposal =>
-          <ProposalCard key={proposal.id} proposal={proposal} ready={ready && !view.unsaved} applyingId={applyingId} apply={apply} dismiss={dismiss} />)}
+          <ProposalCard key={proposal.id} proposal={proposal} ready={ready && !view.unsaved} applyingId={applyingId} apply={apply} dismiss={dismiss} objects={canvas?.objects} />)}
         {messages.length === 0 && <div className="assistant-welcome">
           <span className="assistant-symbol"><Sparkles size={24} /></span>
           <h2>Think together. Draw together.</h2>
@@ -160,7 +172,7 @@ export default function CanvasAssistant({ board, view, editorRef, applyAssistant
             </button>)}
             {message.revision !== undefined && message.revision < board.revision && <small>Canvas changed since this answer.</small>}
             {proposals.filter(proposal => proposal.id === message.proposalId && proposal.status !== "dismissed").map(proposal =>
-              <ProposalCard key={proposal.id} proposal={proposal} ready={ready && !view.unsaved} applyingId={applyingId} apply={apply} dismiss={dismiss} />)}
+              <ProposalCard key={proposal.id} proposal={proposal} ready={ready && !view.unsaved} applyingId={applyingId} apply={apply} dismiss={dismiss} objects={canvas?.objects} />)}
           </article>)}
         </div>
         {loading && <p className="assistant-thinking" role="status">Thinking…</p>}
@@ -178,9 +190,9 @@ export default function CanvasAssistant({ board, view, editorRef, applyAssistant
             event.stopPropagation();
             if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); }
           }} />
-        <div className="assistant-composer-actions"><span>Review changes before adding them.</span>
+        <div className="assistant-composer-actions"><span>/new · /compact · Review changes before adding.</span>
           {loading ? <button className="button" type="button" onClick={() => { requestRef.current?.abort(); setLoading(false); }}><Square size={13} />Stop</button>
-            : <button className="button primary" type="submit" aria-label="Send message" disabled={!ready || view.unsaved || configured !== true || !input.trim()}><Send size={15} />Send</button>}
+            : <button className="button primary" type="submit" aria-label="Send message" disabled={!input.trim() || (input.trim() !== "/new" && (!ready || view.unsaved || configured !== true))}><Send size={15} />Send</button>}
         </div>
       </form>
     </section>}

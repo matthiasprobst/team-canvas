@@ -10,6 +10,25 @@ class AssistantCanvasTest {
     private val state = BoardState(UUID.randomUUID(), "Test", "standard", null, 0, 0, UUID.randomUUID())
     private fun canvas(raw: String) = AssistantProjection.project(state, emptyList(), "shared", json.readTree(raw).toList())
 
+    @Test fun `flow layout respects saved dimensions and connections without creating replacement notes`() {
+        val scene = canvas("""[{"id":"a","type":"rectangle","x":100,"y":100,"width":420,"height":360},{"id":"b","type":"rectangle","x":0,"y":0,"width":220,"height":170},{"id":"edge","type":"arrow","startBinding":{"elementId":"a"},"endBinding":{"elementId":"b"}}]""")
+        val actions = AssistantActions.validate(json.readTree("""[{"type":"arrange_objects","ids":["a","b"],"layout":"flow"}]"""), scene, UUID.randomUUID(), json)
+        assertEquals(setOf("a", "b"), actions.map { it.id }.toSet())
+        assertTrue(actions.all { it.type == "move_object" })
+        assertTrue(actions.first { it.id == "b" }.x >= actions.first { it.id == "a" }.x + 420 + 100)
+        val named = AssistantActions.validate(json.readTree("""[{"type":"label_connection","id":"edge","text":"requires"}]"""), scene, UUID.randomUUID(), json)
+        assertEquals("edge", named.single().id)
+        assertThrows(ClientException::class.java) { AssistantActions.validate(json.readTree("""[{"type":"arrange_objects","ids":["missing"]}]"""), scene, UUID.randomUUID(), json) }
+        assertThrows(ClientException::class.java) { AssistantActions.validate(json.readTree("""[{"type":"label_connection","id":"edge","text":""}]"""), scene, UUID.randomUUID(), json) }
+    }
+
+    @Test fun `cyclic flow falls back to spaced layout and duplicate layout targets are rejected`() {
+        val scene = canvas("""[{"id":"a","type":"rectangle","width":300,"height":200},{"id":"b","type":"rectangle","width":300,"height":200},{"id":"ab","type":"arrow","startBinding":{"elementId":"a"},"endBinding":{"elementId":"b"}},{"id":"ba","type":"arrow","startBinding":{"elementId":"b"},"endBinding":{"elementId":"a"}}]""")
+        val actions = AssistantActions.validate(json.readTree("""[{"type":"arrange_objects","ids":["a","b"]}]"""), scene, UUID.randomUUID(), json)
+        assertNotEquals(actions[0].x to actions[0].y, actions[1].x to actions[1].y)
+        assertThrows(ClientException::class.java) { AssistantActions.validate(json.readTree("""[{"type":"arrange_objects","ids":["a","a"]}]"""), scene, UUID.randomUUID(), json) }
+    }
+
     @Test fun `Markdown notes retain only source metadata and count as one readable note`() {
         val element = json.readTree("""{"id":"ticket","type":"embeddable","x":0,"y":0,"width":420,"height":360,"link":"${ElementValidation.MARKDOWN_LINK}","customData":{"teamCanvasKind":"markdown","markdown":"# Ticket\n- [ ] Done","html":"<script>bad()</script>"}}""")
         val valid = ElementValidation.validateElements(json.createArrayNode().add(element)).single()

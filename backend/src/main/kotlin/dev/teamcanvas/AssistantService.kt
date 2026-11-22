@@ -43,7 +43,7 @@ class AssistantService @Inject constructor(
         authorized(identity, boardId, pageId, capability) { c, scope ->
             val board = scope.canvas.board
             if (expectedEpoch != null && board.epoch != expectedEpoch) throw ClientException("stale_round", "The page or poker round changed. Please ask again.")
-            if (expectedRevision != null && board.revision != expectedRevision && raw.any { it.path("type").asText() in setOf("connect", "update_text") })
+            if (expectedRevision != null && board.revision != expectedRevision && raw.any { it.path("type").asText() in setOf("connect", "update_text", "arrange_objects", "label_connection") })
                 throw ClientException("stale_proposal", "The canvas changed while the assistant was working. Please ask again.")
             if (board.mode == "poker" && capability == null) throw ClientException("locked", "External proposals are unavailable during poker. Use the canvas chat for your private draft.")
             c.update("DELETE FROM assistant_proposals WHERE board_id=? AND (created_at<now()-interval '1 day' OR epoch<>?)", boardId, board.epoch)
@@ -53,9 +53,12 @@ class AssistantService @Inject constructor(
             if (count >= 200) throw ClientException("limit", "Too many assistant proposals. Dismiss pending proposals before creating more.")
             val id = UUID.randomUUID()
             val actions = AssistantActions.validate(raw, scope.canvas, id, json)
-            val referenced = actions.flatMap { listOfNotNull(it.sourceId, it.targetId, it.id.takeIf { _ -> it.type == "update_text" }) }.toSet()
+            val referenced = actions.flatMap { listOfNotNull(it.sourceId, it.targetId, it.id.takeIf { _ -> it.type in setOf("update_text", "move_object", "label_connection") }) }.toSet()
             val objects = scope.canvas.objects.associateBy { it.id }
-            val targets = referenced.flatMap { ref -> listOfNotNull(ref, objects[ref]?.textId) }.toSet()
+            val moved = actions.filter { it.type == "move_object" }.map { it.id }.toSet()
+            val connected = scope.canvas.objects.filter { it.kind == "connection" && (it.sourceId in moved || it.targetId in moved) }.map { it.id }.toSet()
+            val neighbours = scope.canvas.objects.filter { it.id in connected }.flatMap { listOfNotNull(it.sourceId, it.targetId) }.toSet()
+            val targets = (referenced + connected + neighbours).flatMap { ref -> listOfNotNull(ref, objects[ref]?.textId) }.toSet()
             val originals = scope.elements.filter { it.path("id").asText() in targets }.associateBy { it.path("id").asText() }
             if (originals.values.any { it.path("locked").asBoolean() }) throw ClientException("locked", "A proposal cannot change locked objects.")
             if (board.mode == "poker") {

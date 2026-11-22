@@ -164,6 +164,8 @@ Start Claude Code from the same directory, run `/mcp`, select `team_canvas`, and
 
 ### Questions, creation, and feature refinement
 
+The embedded chat supports `/new` for a fresh conversation and `/compact` for a model-generated summary retained in later turns. Both leave canvas content and saved proposals intact. Page or round changes still clear conversation context.
+
 For external assistants, name the server, canvas, and page so they can inspect the correct saved content first. Example prompts:
 
 - "Use team_canvas to list my canvases and the pages in 'Feature planning'."
@@ -171,6 +173,10 @@ For external assistants, name the server, canvas, and page so they can inspect t
 - "Which notes are already connected? Suggest missing connections and explain why."
 - "Propose three notes: Research, Design, Build. Connect them in that order with labelled arrows."
 - "Read the notes connected to 'Authentication'. Ask me about missing requirements, then propose refined note text and connections."
+- "Arrange the existing notes as a flow, following their connections."
+- "Arrange these objects in a grid and label the existing connections with meaningful relationships."
+
+Layout proposals support up to 12 existing notes, shapes, or texts at a time, with spacing computed from their saved dimensions. Flow follows directed connections and uses a grid for cycles; this is a basic layout rather than a crossing-minimization engine. MCP clients can use `arrange_objects` with `ids` and `layout: "flow"` or `"grid"`, and `label_connection` with an existing bound arrow's `id` and label `text`. Existing arrows retain their identity and bindings.
 
 Creation and refinement produce **proposals**. Open the relevant canvas and page, then its bottom-right assistant to review them. Choose **Add to canvas** or **Dismiss**, and wait for **Added to canvas** and **Saved**. Applied objects remain editable, and the editor's undo/redo controls work normally. External proposals can be reviewed even when the embedded model service is unconfigured.
 

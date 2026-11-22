@@ -18,6 +18,10 @@ Open **AI assistant** at the bottom right. Ask questions such as “How many not
 
 Choose **Current page** or **Selected objects** for context. Counts use saved drawing data, combine a note and its bound text into one object, and exclude deleted content. Text inside uploaded images is not read. Source buttons in an answer select and reveal the referenced objects. Answers indicate when the canvas has changed since they were generated.
 
+Use `/new` to clear the current conversation and its summary. This does not alter the canvas or dismiss saved proposals, and it can cancel an in-progress reply. Use `/compact` to replace the conversation with an AI-generated summary that stays in context for later questions. Compaction requires the configured model service; if it fails, the earlier context is retained. Review the summary for important details before continuing.
+
+Ask “Arrange these notes as a flow” or “Arrange these objects in a grid” to rearrange up to 12 existing notes, shapes, or standalone texts through a proposal. Flow layout follows existing connection directions; cyclic graphs fall back to a grid. Spacing uses saved object dimensions, and connected arrows and bound labels move with the objects. Ask “Name these connections” to add or change concise relationship labels on existing bound arrows. Suggested labels still require review; the assistant should ask when a relationship is unclear.
+
 Requests to create or refine content produce a proposal. Review its text, colours, and actions, then choose **Add to canvas** or **Dismiss**. New objects remain ordinary editable canvas elements. Notes and shapes can be joined by bound, labelled arrows, and existing note text can be refined. Suggested relationships are proposals rather than existing facts. Wait for **Added to canvas** and **Saved**; undo and redo use the editor's usual controls.
 
 Chat history lasts while the current page and poker round remain open. Page or round changes clear that context and invalidate old proposals. Proposals are retained for up to one day; a proposal that changes an object edited in the meantime must be regenerated.

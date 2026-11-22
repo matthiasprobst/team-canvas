@@ -65,17 +65,20 @@ object AssistantActions {
 
     fun validate(raw: JsonNode, canvas: AssistantCanvas, proposalId: UUID, json: ObjectMapper): List<CanvasAction> {
         if (!raw.isArray || raw.size() !in 1..20) fail()
+        if (raw.any { it.path("type").asText() == "arrange_objects" }) return validate(AssistantLayout.expand(raw, canvas, json), canvas, proposalId, json)
         val objects = canvas.objects.associateBy { it.id }
         val local = mutableSetOf<String>()
         val spacious = raw.any { it.path("type").asText() == "create_markdown" }
         val actions = raw.mapIndexed { index, item ->
             if (!item.isObject) fail()
             val type = item.path("type").asText()
-            if (type !in setOf("create_note", "create_markdown", "create_shape", "create_text", "connect", "update_text")) fail()
+            if (type !in setOf("create_note", "create_markdown", "create_shape", "create_text", "connect", "update_text", "move_object", "label_connection")) fail()
             val text = item.path("text").asText("")
             val markdown = type == "create_markdown" || (type == "update_text" && objects[item.path("id").asText()]?.format == "markdown")
             if (text.length > (if (markdown) 10_000 else 2000) || (type in setOf("create_note", "create_markdown", "create_text", "update_text") && text.isBlank())) fail()
-            val id = if (type == "update_text") item.path("id").asText() else "ai_${proposalId.toString().replace("-", "")}_$index"
+            val id = if (type in setOf("update_text", "move_object", "label_connection")) item.path("id").asText() else "ai_${proposalId.toString().replace("-", "")}_$index"
+            if (type == "move_object" && (objects[id]?.kind !in setOf("note", "shape", "text") || !item.has("x") || !item.has("y"))) fail()
+            if (type == "label_connection" && (objects[id]?.kind != "connection" || text.isBlank() || text.length > 200 || canvas.objects.none { it.id == id && it.sourceId != null && it.targetId != null })) fail()
             val ref = item.path("id").asText()
             if (type.startsWith("create_") && ref.isNotBlank()) {
                 if (!safeId.matches(ref) || !local.add(ref) || objects.containsKey(ref)) fail()

@@ -13,7 +13,7 @@ export function compileAssistantProposal(editor: ExcalidrawImperativeAPI, propos
     throw new Error("This proposal belongs to an earlier page or poker round. Please ask again.");
   const current = editor.getSceneElementsIncludingDeleted();
   const live = new Map<string, ExcalidrawElement>(current.filter(element => !element.isDeleted).map(element => [element.id, element]));
-  if (proposal.actions.some(action => action.type !== "update_text" && live.has(action.id)))
+  if (proposal.actions.some(action => !(["update_text", "move_object", "label_connection"] as string[]).includes(action.type) && live.has(action.id)))
     throw new Error("This proposal has already been added to the canvas.");
   const app = editor.getAppState();
   const origin = viewportCoordsToSceneCoords({ clientX: app.offsetLeft + Math.min(app.width * 0.3, 320), clientY: app.offsetTop + Math.min(app.height * 0.3, 180) }, app);
@@ -48,6 +48,46 @@ export function compileAssistantProposal(editor: ExcalidrawImperativeAPI, propos
   const created = [...convertToExcalidrawElements(skeletons, { regenerateIds: false }), ...markdownElements];
   created.forEach(element => live.set(element.id, element));
   const changes = new Map<string, ExcalidrawElement>(created.map(element => [element.id, element]));
+  const moved = new Set<string>();
+  for (const action of proposal.actions.filter(action => action.type === "move_object")) {
+    const target = live.get(action.id);
+    if (!target || target.locked) throw new Error("An object to arrange is unavailable or locked.");
+    const dx = action.x - target.x, dy = action.y - target.y;
+    for (const element of [target, ...[...live.values()].filter(element => element.type === "text" && element.containerId === target.id)]) {
+      if (element.locked) throw new Error("A label is locked.");
+      const next = { ...element, x: element.x + dx, y: element.y + dy, version: element.version + 1, versionNonce: Math.floor(Math.random() * 2 ** 30) };
+      changes.set(next.id, next); live.set(next.id, next);
+    }
+    moved.add(target.id);
+  }
+  for (const arrow of [...live.values()].filter(element => element.type === "arrow" || element.type === "line")) {
+    if (arrow.type !== "arrow" && arrow.type !== "line") continue;
+    const labelAction = proposal.actions.find(action => action.type === "label_connection" && action.id === arrow.id);
+    if (!labelAction && !moved.has(arrow.startBinding?.elementId ?? "") && !moved.has(arrow.endBinding?.elementId ?? "")) continue;
+    const source = live.get(arrow.startBinding?.elementId ?? ""), target = live.get(arrow.endBinding?.elementId ?? "");
+    if (arrow.locked || (labelAction && (!source || !target))) throw new Error("A bound connection is unavailable or locked.");
+    const label = [...live.values()].find(element => element.type === "text" && element.containerId === arrow.id);
+    if (label?.locked) throw new Error("A connection label is locked.");
+    const text = labelAction?.text ?? (label?.type === "text" ? label.text : "");
+    const labelId = label?.id ?? `ai_${proposal.id.replaceAll("-", "")}_${arrow.id.slice(0,48)}_label`;
+    if (!label && live.has(labelId)) throw new Error("A generated label ID is already in use.");
+    const from = source ? { x: source.x + source.width, y: source.y + source.height / 2 } : { x: arrow.x, y: arrow.y };
+    const last = arrow.points[arrow.points.length - 1];
+    const to = target ? { x: target.x, y: target.y + target.height / 2 } : { x: arrow.x + last[0], y: arrow.y + last[1] };
+    const generated = convertToExcalidrawElements([{ type: "arrow", id: arrow.id, x: from.x, y: from.y,
+      points: [[0, 0], [to.x - from.x, to.y - from.y]],
+      ...(text ? { label: { ...{ id: labelId }, text, fontSize: label?.type === "text" ? label.fontSize : 18 } } : {}),
+    }], { regenerateIds: false });
+    for (const element of generated) {
+      const previous = live.get(element.id);
+      const next = element.type === "arrow" ? { ...arrow, x: element.x, y: element.y, width: element.width, height: element.height,
+        points: element.points, angle: 0, elbowed: false, fixedSegments: null, boundElements: element.boundElements,
+        version: arrow.version + 1, versionNonce: Math.floor(Math.random() * 2 ** 30) } : {
+        ...element, index: previous?.index ?? element.index, version: (previous?.version ?? 0) + 1, versionNonce: Math.floor(Math.random() * 2 ** 30),
+      };
+      changes.set(next.id, next); live.set(next.id, next);
+    }
+  }
   for (const action of proposal.actions) {
     if (action.type === "update_text") {
       const target = live.get(action.id);
