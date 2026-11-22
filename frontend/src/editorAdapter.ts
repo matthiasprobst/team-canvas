@@ -65,6 +65,20 @@ export class EditorAdapter {
     controller.localChange(drawing, files as unknown as Files);
   }
 
+  applyAssistant(controller: SyncSession, id: string, elements: readonly ExcalidrawElement[]) {
+    const editor = this.editorRef.current;
+    if (!editor) throw new Error("The editor is not ready.");
+    const previous = this.lastDrawn;
+    this.lastDrawn = JSON.stringify((elements as unknown as ElementData[]).map(elementFingerprint));
+    try {
+      controller.applyAssistant(id, elements as unknown as ElementData[], controller.view().files);
+    } catch (error) {
+      this.lastDrawn = previous;
+      throw error;
+    }
+    editor.updateScene({ elements, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+  }
+
   presence(people: Presence[]) {
     this.people = people;
     this.updateCursors();

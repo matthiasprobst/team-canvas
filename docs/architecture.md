@@ -95,6 +95,16 @@ Presence reports both distinct people and occupied connections. A single person 
 
 Deleted elements remain as synchronization tombstones until the owner chooses **Canvas actions → Storage → Clean up storage**. Cleanup is available outside poker and atomically removes deleted elements and unused images across all pages, advances the epoch/revision, and publishes fresh snapshots under the room lock. Old commands fail their epoch check and unconfirmed client edits remain available for draft export. Editor undo history is reset at epoch transitions. Cleanup cannot inspect or reveal private poker drafts. Per-page limits are 4,000 stored elements, 150 images, 4 MB scene JSON and 32 MB image JSON; the whole canvas also has 20 MB scene and 128 MB image budgets.
 
+## Assistant and MCP
+
+`AssistantService` reads authorized saved scenes, projects logical notes/text/connections, and saves bounded proposals. `AssistantTools` exposes the same operations to the embedded chat and MCP. Counts are computed directly from scene data, combining bound text with its container. `AssistantChat` invokes a configured OpenAI-compatible service with allowlisted function tools; provider credentials never reach the browser. There is no model fallback when configuration is absent.
+
+`McpResource` provides stateless Streamable HTTP at `/mcp`. A separate OIDC service tenant validates bearer tokens for the canonical resource audience. OAuth metadata is public, and authentication challenges link to it. Tools recheck signed-in account status and active membership. External requests read public scene content and cannot access private draft capabilities or propose changes during poker.
+
+`assistant_proposals` stores proposals for up to one day. Shared proposals use an account-derived hash; private proposals use only a round capability hash and cascade away with the round. Chat history is browser memory scoped to the page/epoch. New note markers use the sole retained `customData` field, `teamCanvasKind: note`; other metadata remains stripped.
+
+The browser compiles actions into native Excalidraw elements with stable IDs and bound labels/arrows. One editor history entry and one ordinary synchronization patch apply each bounded proposal. Its UUID is also the command receipt ID. `BoardStore` checks ownership, page/round context, and unchanged referenced objects, then marks the proposal applied in the same transaction as its drawing writes. Retry uses that receipt; it never applies a proposal twice. External assistants can create proposals with no browser connected; review and application happen through the canvas chat.
+
 ## Operations
 
 Boards are not automatically deleted. Define retention, storage monitoring, backups, and restore procedures before routine use.
@@ -125,6 +135,6 @@ The core product is deliberately small:
 
 Easy company rollout and maintenance are design goals. Prefer a small number of services, established dependencies, explicit permissions, and changes that are easy to review. A new dependency must justify its maintenance cost; fewer dependencies must not mean reimplementing authentication or a drawing editor. Security fixes, reliable saving, safe upgrades, backup/restore, and clear operating instructions are part of the core scope.
 
-Keep additions tied to those workflows. Chat, video calls, AI assistants, task/project management, plugin marketplaces, complex approval workflows, and a general integration platform are outside the intended scope. Existing search, tags, and presence support finding and using canvases; they should stay lightweight.
+Keep additions tied to those workflows. The optional canvas assistant and MCP tools support reading and refining canvas content. Video calls, task/project management, plugin marketplaces, complex approval workflows, and a general integration platform remain outside the intended scope. Existing search, tags, and presence support finding and using canvases; they should stay lightweight.
 
 React/TypeScript and Excalidraw provide the browser UI; Kotlin/Quarkus provides one backend; PostgreSQL stores accounts, drawings, and uploaded images. Caddy serves the UI and proxies requests. Company deployments use an existing Keycloak identity provider. No Redis, message broker, separate image store, or application SaaS account is required. Tailwind and Vite are build tooling, and the UI is English.

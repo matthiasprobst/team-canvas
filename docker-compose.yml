@@ -70,6 +70,10 @@ services:
       TEAM_CANVAS_ALLOWED_ORIGINS: ${PUBLIC_ORIGIN:-http://localhost:8088}
       # Backend has no published port; only the internal proxy can reach it.
       TRUSTED_PROXIES: 0.0.0.0/0
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:8088}
+      TEAM_CANVAS_AI_BASE_URL: ${TEAM_CANVAS_AI_BASE_URL:-}
+      TEAM_CANVAS_AI_API_KEY: ${TEAM_CANVAS_AI_API_KEY:-}
+      TEAM_CANVAS_AI_MODEL: ${TEAM_CANVAS_AI_MODEL:-}
     depends_on:
       db: {condition: service_healthy}
       keycloak: {condition: service_healthy}

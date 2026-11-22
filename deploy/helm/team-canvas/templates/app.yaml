@@ -33,6 +33,7 @@ spec:
             - {name: TEAM_CANVAS_MAX_OWNED_CANVASES, value: {{ .Values.limits.maxOwnedCanvasesPerUser | quote }}}
             - {name: QUARKUS_OIDC_AUTHENTICATION_COOKIE_FORCE_SECURE, value: "true"}
             - {name: TEAM_CANVAS_ALLOWED_ORIGINS, value: "https://{{ .Values.host }}"}
+            - {name: PUBLIC_ORIGIN, value: "https://{{ .Values.host }}"}
             # Use the actual frontend pod CIDR/proxy addresses; never trust arbitrary clients.
             - {name: TRUSTED_PROXIES, value: {{ .Values.trustedProxies | quote }}}
           resources:
@@ -181,6 +182,11 @@ spec:
     matchLabels: {app: {{ .Release.Name }}-backend}
   policyTypes: [Egress]
   egress:
+    {{- range .Values.assistant.egress }}
+    - to:
+        - ipBlock: {cidr: {{ .cidr | quote }}}
+      ports: [{protocol: TCP, port: {{ .port }}}]
+    {{- end }}
     - to:
         - ipBlock: {cidr: {{ .Values.databaseCIDR }}}
       ports: [{protocol: TCP, port: 5432}]

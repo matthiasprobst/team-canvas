@@ -14,6 +14,7 @@ class ExpiredRecords @Inject constructor(private val repository: BoardRepository
                 "board_sessions" to "expires_at<now()",
                 "board_invitations" to "revoked OR expires_at<now()",
                 "command_receipts" to "created_at<now()-interval '2 days'",
+                "assistant_proposals" to "created_at<now()-interval '1 day'",
             )) removed += c.update("DELETE FROM $table WHERE ctid IN (SELECT ctid FROM $table WHERE $condition LIMIT 500)")
             return removed + AdminAudit.cleanup(c)
         }

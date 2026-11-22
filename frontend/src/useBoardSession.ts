@@ -101,6 +101,9 @@ export function useBoardSession(boardId: string, identity: Identity) {
   );
   const selectPage = useCallback((pageId: string) => controller.selectPage(pageId), [controller]);
   const recoveryExported = useCallback(() => controller.recoveryExported(), [controller]);
+  const applyAssistant = useCallback((id: string, elements: readonly ExcalidrawElement[]) => {
+    adapter.applyAssistant(controller, id, elements);
+  }, [adapter, controller]);
   return {
     view,
     people,
@@ -117,5 +120,6 @@ export function useBoardSession(boardId: string, identity: Identity) {
     createPage,
     selectPage,
     recoveryExported,
+    applyAssistant,
   };
 }

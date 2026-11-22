@@ -23,6 +23,8 @@ See the [user guide](docs/user-guide.md) for pages, templates, poker rounds, sha
 | Collect ideas privately | **Start poker**, contribute, then **Stop poker and reveal**. Any member can reveal saved contributions. This is not numeric estimation poker. |
 | Reuse a layout | Mark a canvas as a template; **Start template** creates an independent copy of all its pages. |
 | Find and share work | Search by name or tags, reopen saved canvases, and manage editing membership. |
+| Ask an AI assistant | Use the bottom-right chat to count objects, read note text, and propose editable notes, shapes, text, and connections. Requires a configured AI service. |
+| Connect external assistants | Codex, OpenCode, and Claude Code can inspect saved shared content and submit proposals through the authenticated MCP endpoint. |
 
 Everyone must sign in, and invitations grant editing access. A **public template** is available to all signed-in users of your deployment. Private poker contributions stay hidden from other members, including the owner, until reveal; infrastructure administrators can access stored data. There is no read-only sharing role or revision history.
 
@@ -51,6 +53,117 @@ Open **http://localhost:8088**, choose **Login with SSO**, and use one of the de
 Use separate browser profiles to try sharing between Alice and Bob. Passwords can be configured before the first start; see [local setup and checks](docs/local-development.md) for details, WLAN access, and troubleshooting.
 
 Data survives `docker compose down`. **`docker compose down -v` deletes the development database and Keycloak data.** The bundled setup and demo accounts are for development; use the [operator handover](docs/operator-handover.md) before admitting retained company data. For an existing database, read the [upgrade notes](docs/upgrading.md).
+
+## Work with the canvas through chat
+
+Use the embedded **AI assistant**, or connect **Codex**, **OpenCode**, or **Claude Code** through MCP. All four can ask about saved objects and text, count notes, suggest relationships, and propose notes, shapes, text, and labelled connections. External assistants use their own model service; they do not need the embedded chat's API key.
+
+### Embedded chat: OpenAI or an OpenAI-compatible service
+
+For the local Docker stack, edit the existing root `.env`, preserving its database and sign-in settings. For OpenAI, [create an API key](https://platform.openai.com/api-keys) and ensure your API organization has [billing or credits enabled](https://help.openai.com/en/articles/9039756-managing-billing-for-chatgpt-and-the-api-platform), then set:
+
+```dotenv
+TEAM_CANVAS_AI_BASE_URL=https://api.openai.com/v1
+TEAM_CANVAS_AI_API_KEY=your-api-key-here
+TEAM_CANVAS_AI_MODEL=gpt-5.4-mini
+```
+
+[GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini) supports Chat Completions and function calling. For another provider or a local model service, substitute its base URL, model ID, and key; the model must support function calls and tool-result messages. The base URL excludes `/chat/completions`. A key is optional for services that do not require authentication. The app currently uses a shared backend credential, rather than an OpenAI account sign-in button. Keep keys in `.env` or your secret manager.
+
+**Open WebUI** is also supported through its OpenAI-compatible API. Instead of the OpenAI values above, set:
+
+```dotenv
+TEAM_CANVAS_AI_BASE_URL=https://openwebui.example.com/api
+TEAM_CANVAS_AI_API_KEY=your-openwebui-api-key
+TEAM_CANVAS_AI_MODEL=your-openwebui-model-id
+```
+
+Replace the example hostname with your instance. Generate the key in Open WebUI under **Settings → Account**; an administrator may need to enable API keys and grant your account permission. Use a model ID available to that account, as returned by Open WebUI's `GET /api/models`, and choose a model that supports native function calling. The key belongs to Open WebUI; no OpenAI key is required by Team Canvas when using this provider. See [Open WebUI's API documentation](https://docs.openwebui.com/reference/api-endpoints/).
+
+The backend appends `/chat/completions`, so the Open WebUI base URL ends in `/api`. For generic providers, use the API root appropriate to that service, excluding `/chat/completions`. Credentials are sent as `Authorization: Bearer <key>` without requiring an OpenAI key format. Team Canvas supplies and executes the canvas tools; Open WebUI forwards those tool definitions to its model and returns the tool calls to Team Canvas. Use native function calling for that model, and leave Open WebUI's server-side tools out of this integration. See [Open WebUI's tool-calling behavior](https://docs.openwebui.com/reference/server-side-tool-calling/).
+
+When Team Canvas runs in Docker, the provider URL must be reachable **from the backend container**. `localhost` inside that container refers to the backend itself. For a locally hosted Open WebUI, use a reachable host address or a shared Docker network and the Open WebUI service's internal address and port.
+
+Build and recreate the application services to load the configuration and latest UI:
+
+```sh
+docker compose up -d --build backend frontend
+```
+
+Open a canvas at **http://localhost:8088**, wait for **Saved**, and open **AI assistant** at the bottom right. Choose **Current page** or **Selected objects** and send your request. For host-run Quarkus, export these variables before starting the backend; Maven does not load `.env` automatically.
+
+### Before connecting an external assistant
+
+Run the app and the assistant on the same computer for the local examples below. The MCP URL is **http://localhost:8088/mcp**. For another deployment, replace it with `<PUBLIC_ORIGIN>/mcp`; the assistant must be able to reach both the app and its sign-in service. For Vite development, use the configured origin, usually `http://localhost:5173/mcp`.
+
+Sign in with your **Team Canvas account** during MCP authorization. You must own the canvas or be an active member. The bundled development OAuth client is `team-canvas-mcp`, with `canvas:read` and `canvas:propose` scopes. Company deployments need an approved client configured by their operator.
+
+**Existing local installations need an identity-provider update:** Keycloak's startup realm import does not update an existing realm. With the bundled Compose stack running, run the following from the repository root (requires Node.js 22+ and Docker access):
+
+```sh
+node deploy/keycloak/configure-mcp.mjs
+```
+
+This adds the MCP client, scopes, and audience mapper while retaining existing users and data. See [existing-realm setup](docs/local-development.md#add-mcp-access-to-an-existing-development-realm) for details or manual setup. If Keycloak shows **Client not found**, complete this step, then retry the assistant login.
+
+### Codex
+
+Run these commands with a current Codex CLI:
+
+```sh
+codex mcp add team_canvas --url http://localhost:8088/mcp --oauth-client-id team-canvas-mcp
+codex mcp login team_canvas --scopes canvas:read,canvas:propose
+```
+
+Complete the browser sign-in, start a new Codex session, and run `/mcp` to check the connection. Then ask Codex to use `team_canvas`. See the [Codex MCP guide](https://learn.chatgpt.com/docs/extend/mcp?surface=cli). If `--oauth-client-id` is unavailable, upgrade the client.
+
+### OpenCode
+
+For OpenCode V2, merge the following into your project's `opencode.jsonc`, preserving any existing settings:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "team_canvas": {
+        "type": "remote",
+        "url": "http://localhost:8088/mcp",
+        "oauth": {
+          "client_id": "team-canvas-mcp",
+          "scope": "canvas:read canvas:propose"
+        }
+      }
+    }
+  }
+}
+```
+
+Open OpenCode, run `/mcps`, select `team_canvas`, and complete sign-in. Run `opencode mcp list` to check that it is connected. OpenCode V1 uses a different configuration layout (`mcp.team_canvas` and OAuth `clientId`); upgrade to V2 for the example above or consult your version's schema. See the [OpenCode MCP guide](https://opencode.ai/docs/mcp-servers/).
+
+### Claude Code
+
+Use a current Claude Code release with pre-registered OAuth client support:
+
+```sh
+claude mcp add --transport http --client-id team-canvas-mcp team_canvas http://localhost:8088/mcp
+```
+
+Start Claude Code from the same directory, run `/mcp`, select `team_canvas`, and authenticate. This is a public OAuth client, so no client secret is needed. If `claude mcp add --help` does not list `--client-id`, upgrade Claude Code before using this flow. See the [Claude Code MCP guide](https://code.claude.com/docs/en/mcp).
+
+### Questions, creation, and feature refinement
+
+For external assistants, name the server, canvas, and page so they can inspect the correct saved content first. Example prompts:
+
+- "Use team_canvas to list my canvases and the pages in 'Feature planning'."
+- "On the 'Overview' page of 'Feature planning', how many notes and shapes are there? Summarize the note text."
+- "Which notes are already connected? Suggest missing connections and explain why."
+- "Propose three notes: Research, Design, Build. Connect them in that order with labelled arrows."
+- "Read the notes connected to 'Authentication'. Ask me about missing requirements, then propose refined note text and connections."
+
+Creation and refinement produce **proposals**. Open the relevant canvas and page, then its bottom-right assistant to review them. Choose **Add to canvas** or **Dismiss**, and wait for **Added to canvas** and **Saved**. Applied objects remain editable, and the editor's undo/redo controls work normally. External proposals can be reviewed even when the embedded model service is unconfigured.
+
+External assistants can read saved shared content and submit proposals while the canvas is closed. They cannot read private poker drafts or submit proposals during poker. Counts combine bound text with its note or shape; text inside uploaded images is not read. Proposals expire after one day and can become stale when the page, round, or affected objects change. See the [user guide](docs/user-guide.md#ask-about-the-canvas-and-create-content) for context and privacy details, and [MCP troubleshooting](docs/local-development.md#mcp-connection-troubleshooting) for connection errors.
 
 ## Develop locally
 
@@ -90,6 +203,7 @@ Open **http://localhost:5173** and sign in with `alice` / `alice-dev-only` or `b
 | I want to… | Read |
 | --- | --- |
 | Use the app or run a workshop | [User guide](docs/user-guide.md) |
+| Configure chat or connect Codex, OpenCode, or Claude Code | [Chat setup and examples](#work-with-the-canvas-through-chat) → [MCP configuration and troubleshooting](docs/local-development.md#ai-chat-and-external-assistants) |
 | Run locally, develop, or test | [Local development and checks](docs/local-development.md) |
 | Deploy for my organization | [Operator handover](docs/operator-handover.md) → [production readiness](docs/production-readiness.md) |
 | Upgrade, back up, restore, or offboard users | [Operations runbook](docs/operations-runbook.md) and [upgrade notes](docs/upgrading.md) |

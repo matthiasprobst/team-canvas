@@ -61,6 +61,7 @@ object ElementValidation {
             "status",
             "scale",
             "crop",
+            "customData",
         )
     private val numeric =
         setOf(
@@ -124,6 +125,9 @@ object ElementValidation {
             validateNested(raw, 0)
             (raw.deepCopy<JsonNode>() as ObjectNode).apply {
                 remove(raw.fieldNames().asSequence().filter { it !in fields }.toList())
+                if (raw.path("customData").path("teamCanvasKind").asText() == "note")
+                    set<JsonNode>("customData", com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode().put("teamCanvasKind", "note"))
+                else remove("customData")
                 put("updated", 0)
                 defaults(this)
             }

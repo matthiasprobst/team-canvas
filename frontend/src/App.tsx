@@ -13,6 +13,7 @@ import PageControls from "./PageControls";
 import CanvasStorageDialog from "./CanvasStorageDialog";
 import { ConfirmDialog } from "./Dialog";
 import CanvasTimer from "./CanvasTimer";
+import CanvasAssistant from "./CanvasAssistant";
 
 export default function BoardEditor({ boardId, identity, user }: { boardId: string; identity: Identity; user: Account }) {
   const locationState = useLocation().state as { dashboard?: string } | null;
@@ -33,6 +34,7 @@ export default function BoardEditor({ boardId, identity, user }: { boardId: stri
     createPage,
     selectPage,
     recoveryExported,
+    applyAssistant,
   } = useBoardSession(boardId, identity);
   const { snapshot, online, error } = view;
   const [switching, setSwitching] = useState(false);
@@ -53,6 +55,7 @@ export default function BoardEditor({ boardId, identity, user }: { boardId: stri
         width: 220,
         height: 170,
         backgroundColor: "#fff3bf",
+        customData: { teamCanvasKind: "note" },
         fillStyle: "solid",
         strokeColor: "#b08900",
         label: { text: "Note", fontSize: 22, textAlign: "left", verticalAlign: "top" },
@@ -252,6 +255,7 @@ export default function BoardEditor({ boardId, identity, user }: { boardId: stri
             <MainMenu.DefaultItems.ToggleTheme />
           </MainMenu>
         </Excalidraw>
+        {snapshot && !deleted && <CanvasAssistant key={`${boardId}:${snapshot.board.pageId}:${snapshot.board.epoch}`} board={snapshot.board} view={view} editorRef={editorRef} applyAssistant={applyAssistant} />}
       </main>
     </div>
   );

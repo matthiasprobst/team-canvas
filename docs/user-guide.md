@@ -12,6 +12,20 @@ Inside a canvas, use the drawing tools for shapes, text, and images, or choose *
 
 Choose **New page** to copy the current page or start blank. A copy can optionally include revealed poker drawings. Any member can add or select a page, and **everyone follows the same selected page**. Page creation and switching are unavailable during poker. Renaming, reordering, and deleting pages are not implemented.
 
+## Ask about the canvas and create content
+
+Open **AI assistant** at the bottom right. Ask questions such as “How many notes are here?” or “What is written in the notes?”, or request “Create three notes: Research, Design, Build”. Your operator must configure an OpenAI-compatible service for the embedded chat. Text supplied to chat is processed by that configured service.
+
+Choose **Current page** or **Selected objects** for context. Counts use saved drawing data, combine a note and its bound text into one object, and exclude deleted content. Text inside uploaded images is not read. Source buttons in an answer select and reveal the referenced objects. Answers indicate when the canvas has changed since they were generated.
+
+Requests to create or refine content produce a proposal. Review its text, colours, and actions, then choose **Add to canvas** or **Dismiss**. New objects remain ordinary editable canvas elements. Notes and shapes can be joined by bound, labelled arrows, and existing note text can be refined. Suggested relationships are proposals rather than existing facts. Wait for **Added to canvas** and **Saved**; undo and redo use the editor's usual controls.
+
+Chat history lasts while the current page and poker round remain open. Page or round changes clear that context and invalidate old proposals. Proposals are retained for up to one day; a proposal that changes an object edited in the meantime must be regenerated.
+
+During poker, the canvas chat can use shared content and this tab's private draft. New contributions remain private until reveal. External assistants see shared content only and cannot submit proposals during poker. Private proposals have no account-to-draft mapping and are removed when the round ends.
+
+Codex, OpenCode, and Claude Code can connect to the deployment's `/mcp` endpoint. They can inspect saved data while the canvas is closed and save proposals for review here. Open the canvas chat to review them; submitting a proposal does not apply it automatically. External assistants use their own model service. See [connection and AI configuration](local-development.md#ai-chat-and-external-assistants).
+
 ## Invite people and manage access
 
 The owner opens **Share → Create invitation link** and sends the link to colleagues. Recipients must sign in and explicitly accept; an invitation grants editing access. There is no guest or read-only role.

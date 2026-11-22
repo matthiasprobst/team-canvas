@@ -6,12 +6,16 @@ const drawingFields = new Set(
     "id type x y width height angle strokeColor backgroundColor fillStyle strokeWidth strokeStyle roughness opacity " +
     "groupIds frameId index roundness seed version versionNonce isDeleted boundElements locked text originalText fontSize fontFamily " +
     "textAlign verticalAlign containerId autoResize lineHeight points lastCommittedPoint startBinding endBinding startArrowhead endArrowhead " +
-    "elbowed fixedSegments startIsSpecial endIsSpecial pressures simulatePressure fileId status scale crop"
+    "elbowed fixedSegments startIsSpecial endIsSpecial pressures simulatePressure fileId status scale crop customData"
   ).split(" ")
 );
 
 export function normalizeElement(element: ElementData): ElementData {
-  return Object.fromEntries(Object.entries(element).filter(([key]) => drawingFields.has(key))) as ElementData;
+  const normalized = Object.fromEntries(Object.entries(element).filter(([key]) => drawingFields.has(key))) as ElementData;
+  if ((element.customData as { teamCanvasKind?: string } | undefined)?.teamCanvasKind === "note")
+    normalized.customData = { teamCanvasKind: "note" };
+  else delete normalized.customData;
+  return normalized;
 }
 
 export function elementFingerprint(element: ElementData | undefined): string {

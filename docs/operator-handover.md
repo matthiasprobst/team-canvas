@@ -38,6 +38,9 @@ These variables describe the backend regardless of the hosting platform. Inject 
 | `IDENTITY_BLOCKING_SECRET` | Independent persistent random secret, at least 32 characters; retain prior keys during rotation |
 | `TEAM_CANVAS_IDENTITY_BLOCKING_PREVIOUS_SECRETS` | Previous blocking keys when rotating; protect like the current key |
 | `TEAM_CANVAS_ALLOWED_ORIGINS` | Exact public HTTPS origin(s), without trailing slash |
+| `PUBLIC_ORIGIN` | Canonical public HTTPS origin used for MCP resource audience and discovery |
+| `TEAM_CANVAS_AI_BASE_URL`, `TEAM_CANVAS_AI_MODEL` | Optional OpenAI-compatible API root and tool-capable model for embedded chat; OpenAI uses `https://api.openai.com/v1`, Open WebUI uses `https://your-webui.example/api`. The app appends `/chat/completions`. |
+| `TEAM_CANVAS_AI_API_KEY` | Chosen provider's bearer credential, when required (for example, an Open WebUI API key); provision as a backend secret |
 | `TRUSTED_PROXIES` | Only the actual reverse-proxy addresses/CIDRs |
 | `QUARKUS_OIDC_AUTHENTICATION_COOKIE_FORCE_SECURE` | `true` (also the application default) |
 

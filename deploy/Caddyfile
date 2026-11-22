@@ -9,7 +9,7 @@
   handle /auth/* {
     respond 404
   }
-  @backend path /api/* /ws/*
+  @backend path /api/* /ws/* /mcp /.well-known/oauth-protected-resource/*
   handle @backend {
     header Cache-Control no-store
     reverse_proxy backend:8080 {
