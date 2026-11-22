@@ -1,4 +1,5 @@
 import type { ElementData } from "./protocol";
+import { MARKDOWN_LINK, markdownSource } from "./markdownCore";
 
 // Keep the editor boundary aligned with ElementValidation's persisted drawing fields.
 const drawingFields = new Set(
@@ -6,15 +7,20 @@ const drawingFields = new Set(
     "id type x y width height angle strokeColor backgroundColor fillStyle strokeWidth strokeStyle roughness opacity " +
     "groupIds frameId index roundness seed version versionNonce isDeleted boundElements locked text originalText fontSize fontFamily " +
     "textAlign verticalAlign containerId autoResize lineHeight points lastCommittedPoint startBinding endBinding startArrowhead endArrowhead " +
-    "elbowed fixedSegments startIsSpecial endIsSpecial pressures simulatePressure fileId status scale crop customData"
+    "elbowed fixedSegments startIsSpecial endIsSpecial pressures simulatePressure fileId status scale crop customData link"
   ).split(" ")
 );
 
 export function normalizeElement(element: ElementData): ElementData {
   const normalized = Object.fromEntries(Object.entries(element).filter(([key]) => drawingFields.has(key))) as ElementData;
-  if ((element.customData as { teamCanvasKind?: string } | undefined)?.teamCanvasKind === "note")
+  const markdown = markdownSource(element);
+  if (markdown !== null) {
+    normalized.customData = { teamCanvasKind: "markdown", markdown };
+    normalized.link = MARKDOWN_LINK;
+  } else if ((element.customData as { teamCanvasKind?: string } | undefined)?.teamCanvasKind === "note")
     normalized.customData = { teamCanvasKind: "note" };
   else delete normalized.customData;
+  if (markdown === null) delete normalized.link;
   return normalized;
 }
 

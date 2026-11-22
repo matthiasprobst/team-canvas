@@ -19,6 +19,7 @@ See the [user guide](docs/user-guide.md) for pages, templates, poker rounds, sha
 | Workflow | How it works |
 | --- | --- |
 | Draw together | Shared shapes, text, sticky notes, images, and live cursors. |
+| Display ticket details | Add a Markdown note with rendered headings, tables, task lists, links, and code blocks; edit its source with a live preview. |
 | Organize a workshop | Add blank pages or copy a page. Everyone follows the same selected page. |
 | Collect ideas privately | **Start poker**, contribute, then **Stop poker and reveal**. Any member can reveal saved contributions. This is not numeric estimation poker. |
 | Reuse a layout | Mark a canvas as a template; **Start template** creates an independent copy of all its pages. |
@@ -53,6 +54,16 @@ Open **http://localhost:8088**, choose **Login with SSO**, and use one of the de
 Use separate browser profiles to try sharing between Alice and Bob. Passwords can be configured before the first start; see [local setup and checks](docs/local-development.md) for details, WLAN access, and troubleshooting.
 
 Data survives `docker compose down`. **`docker compose down -v` deletes the development database and Keycloak data.** The bundled setup and demo accounts are for development; use the [operator handover](docs/operator-handover.md) before admitting retained company data. For an existing database, read the [upgrade notes](docs/upgrading.md).
+
+## Markdown notes
+
+Choose **Markdown note** in a canvas toolbar, paste or write your Markdown, review the live preview, and choose **Save Markdown note**. Notes support headings, emphasis, lists, task lists, tables, links, and code blocks. Task checkboxes are read-only in the rendered note; change them in the source editor.
+
+Select a note and choose **Edit Markdown**, or activate it with a double-click and use its **Edit** button. Double-click also enables scrolling and links inside a note. Move, resize, duplicate, delete, and connect it with arrows using the drawing tools. Changes synchronize with collaborators and support the editor's undo/redo controls.
+
+Ask the embedded chat or an external assistant to create or refine a Markdown ticket. MCP represents it as one note with `format: "markdown"` and its source in `text`; `create_markdown` proposes a new note, and `update_text` refines its source. Connections reference the note's element ID as usual. Poker drafts follow the same privacy and reveal rules as other drawings.
+
+Markdown notes render locally without loading external pages. Raw HTML is ignored, images show their alt text, and links allow HTTP, HTTPS, mailto, or in-document anchors. Notes contain up to 10,000 characters. **Image exports currently show an embedded-content placeholder**; the editable source remains saved in the canvas and draft exports.
 
 ## Work with the canvas through chat
 

@@ -97,6 +97,10 @@ Deleted elements remain as synchronization tombstones until the owner chooses **
 
 ## Assistant and MCP
 
+Markdown notes use Excalidraw `embeddable` elements rendered as local React content through `renderEmbeddable`. Only the fixed `https://team-canvas.invalid/markdown` marker is accepted, so this does not enable arbitrary external embeds. Validated `customData` retains only `teamCanvasKind: "markdown"` and a bounded Markdown source string. The renderer uses `react-markdown` and GFM with raw HTML disabled, external images replaced by alt text, and restricted link protocols. Metadata follows existing scene synchronization, page copying, draft privacy, and undo/redo. No separate database table is needed. Excalidraw image exports currently show placeholders, an accepted limitation.
+
+Assistant projection exposes Markdown source in `text` with `format: "markdown"` and counts the element as one note. `create_markdown` creates a reviewed proposal; `update_text` preserves the note's type while changing its source. Existing stale-target checks include source metadata. The source editor also compares the latest source before saving to catch edits received while its dialog was open; server synchronization retains the app's object-level last-writer-wins policy.
+
 `AssistantService` reads authorized saved scenes, projects logical notes/text/connections, and saves bounded proposals. `AssistantTools` exposes the same operations to the embedded chat and MCP. Counts are computed directly from scene data, combining bound text with its container. `AssistantChat` invokes a configured OpenAI-compatible service with allowlisted function tools; provider credentials never reach the browser. There is no model fallback when configuration is absent.
 
 `McpResource` provides stateless Streamable HTTP at `/mcp`. A separate OIDC service tenant validates bearer tokens for the canonical resource audience. OAuth metadata is public, and authentication challenges link to it. Tools recheck signed-in account status and active membership. External requests read public scene content and cannot access private draft capabilities or propose changes during poker.

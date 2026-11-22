@@ -7,7 +7,8 @@ import java.util.Base64
 /** Validate the drawing schema before untrusted data reaches persistence or another browser. */
 object ElementValidation {
     private val allowedTypes =
-        setOf("rectangle", "ellipse", "diamond", "line", "arrow", "freedraw", "text", "image")
+        setOf("rectangle", "ellipse", "diamond", "line", "arrow", "freedraw", "text", "image", "embeddable")
+    const val MARKDOWN_LINK = "https://team-canvas.invalid/markdown"
     private val safeId = Regex("^[A-Za-z0-9_-]{1,128}$")
     private val fields =
         setOf(
@@ -62,6 +63,7 @@ object ElementValidation {
             "scale",
             "crop",
             "customData",
+            "link",
         )
     private val numeric =
         setOf(
@@ -108,6 +110,11 @@ object ElementValidation {
             val id = raw.path("id")
             if (!id.isTextual || !safeId.matches(id.asText()) || !ids.add(id.asText())) invalid()
             if (!raw.path("type").isTextual || raw.path("type").asText() !in allowedTypes) invalid()
+            val markdown = raw.path("type").asText() == "embeddable"
+            if (markdown && (raw.path("customData").path("teamCanvasKind").asText() != "markdown" ||
+                    !raw.path("customData").path("markdown").isTextual ||
+                    raw.path("customData").path("markdown").asText().length > 10_000 ||
+                    raw.path("link").asText() != MARKDOWN_LINK)) invalid()
             if (raw.path("type").asText() == "text" && !raw.path("text").isTextual) invalid()
             if (
                 raw.path("type").asText() == "image" &&
@@ -125,9 +132,14 @@ object ElementValidation {
             validateNested(raw, 0)
             (raw.deepCopy<JsonNode>() as ObjectNode).apply {
                 remove(raw.fieldNames().asSequence().filter { it !in fields }.toList())
-                if (raw.path("customData").path("teamCanvasKind").asText() == "note")
+                if (markdown) {
+                    set<JsonNode>("customData", com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode()
+                        .put("teamCanvasKind", "markdown").put("markdown", raw.path("customData").path("markdown").asText()))
+                    put("link", MARKDOWN_LINK)
+                } else if (raw.path("customData").path("teamCanvasKind").asText() == "note")
                     set<JsonNode>("customData", com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode().put("teamCanvasKind", "note"))
                 else remove("customData")
+                if (!markdown) remove("link")
                 put("updated", 0)
                 defaults(this)
             }

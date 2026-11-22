@@ -255,6 +255,25 @@ class BoardStoreIntegrationTest {
 
     private fun assistant() = AssistantService(BoardRepository(dataSource), accounts, SceneRepository(json), json)
 
+    @Test fun `Markdown source remains private during poker and survives reveal`() {
+        val room = room()
+        val service = assistant()
+        val public = (shape("public-ticket") as com.fasterxml.jackson.databind.node.ObjectNode)
+            .put("type", "embeddable").put("link", ElementValidation.MARKDOWN_LINK)
+            .apply { putObject("customData").put("teamCanvasKind", "markdown").put("markdown", "# Public ticket") }
+        store.patch(room.host, context(room.host), ElementValidation.validateElements(json.createArrayNode().add(public)), emptyMap())
+        assertEquals("markdown", service.inspect(room.visitor, room.board.id).canvas.objects.single().format)
+        rounds.start(room.host, context(room.host))
+        val private = public.deepCopy().put("id", "private-ticket")
+            .apply { putObject("customData").put("teamCanvasKind", "markdown").put("markdown", "# Private criterion") }
+        store.patch(room.guest, context(room.guest), ElementValidation.validateElements(json.createArrayNode().add(private)), emptyMap())
+        assertEquals(listOf("# Public ticket"), service.inspect(room.owner, room.board.id).canvas.objects.map { it.text })
+        assertEquals(listOf("# Public ticket"), service.inspect(room.visitor, room.board.id).canvas.objects.map { it.text })
+        assertTrue(service.inspect(room.visitor, room.board.id, capability = room.guest.draftKey).canvas.objects.any { it.text == "# Private criterion" })
+        rounds.stop(room.host, context(room.host))
+        assertEquals(setOf("# Public ticket", "# Private criterion"), service.inspect(room.owner, room.board.id).canvas.objects.map { it.text }.toSet())
+    }
+
     @Test fun `assistant inspection preserves membership and capability privacy`() {
         val room = room()
         val service = assistant()

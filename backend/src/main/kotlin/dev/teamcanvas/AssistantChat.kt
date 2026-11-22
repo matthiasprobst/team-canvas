@@ -54,6 +54,8 @@ class AssistantChat @Inject constructor(private val service: AssistantService, p
                 Use count_objects for numerical questions. Read exact text and existing connections from supplied data or tools.
                 For IDs listed in textTruncatedIds, use read_objects before quoting or summarizing their full text.
                 For creation, connections and text edits call propose_changes. Explain inferred relationships as suggestions.
+                Use create_markdown for tickets, structured descriptions, acceptance criteria, tables or Markdown notes.
+                A note with format markdown contains Markdown source in text; refine it with update_text while preserving its structure.
                 Proposals need the user to choose Add to canvas. Never claim changes are saved or applied when only proposed.
                 Use existing object IDs for references and new local IDs for objects created in the same proposal.
                 Only use the supplied board and page. Do not switch pages. Ask a focused question when a reference is ambiguous.

@@ -10,6 +10,39 @@ class AssistantCanvasTest {
     private val state = BoardState(UUID.randomUUID(), "Test", "standard", null, 0, 0, UUID.randomUUID())
     private fun canvas(raw: String) = AssistantProjection.project(state, emptyList(), "shared", json.readTree(raw).toList())
 
+    @Test fun `Markdown notes retain only source metadata and count as one readable note`() {
+        val element = json.readTree("""{"id":"ticket","type":"embeddable","x":0,"y":0,"width":420,"height":360,"link":"${ElementValidation.MARKDOWN_LINK}","customData":{"teamCanvasKind":"markdown","markdown":"# Ticket\n- [ ] Done","html":"<script>bad()</script>"}}""")
+        val valid = ElementValidation.validateElements(json.createArrayNode().add(element)).single()
+        assertFalse(valid.path("customData").has("html"))
+        val projected = AssistantProjection.project(state, emptyList(), "shared", listOf(valid))
+        assertEquals(1, projected.counts.notes)
+        assertEquals(1, projected.counts.rawElements)
+        assertEquals("markdown", projected.objects.single().format)
+        assertEquals("# Ticket\n- [ ] Done", projected.objects.single().text)
+        val updated = AssistantActions.validate(json.readTree("""[{"type":"update_text","id":"ticket","text":"## Refined ticket"}]"""), projected, UUID.randomUUID(), json)
+        assertEquals("## Refined ticket", updated.single().text)
+    }
+
+    @Test fun `arbitrary embeds and oversized Markdown cannot enter the scene`() {
+        fun note(link: String, source: String = "# Ticket", kind: String = "markdown") = json.createObjectNode()
+            .put("id", "ticket").put("type", "embeddable").put("x", 0).put("y", 0).put("width", 420).put("height", 360).put("link", link)
+            .apply { putObject("customData").put("teamCanvasKind", kind).put("markdown", source) }
+        for (element in listOf(note("https://external.example"), note(ElementValidation.MARKDOWN_LINK, "x".repeat(10_001)), note(ElementValidation.MARKDOWN_LINK, kind = "html"))) {
+            assertThrows(ClientException::class.java) { ElementValidation.validateElements(json.createArrayNode().add(element)) }
+        }
+    }
+
+    @Test fun `Markdown creation proposals support source and connected local notes within limits`() {
+        val raw = json.readTree("""[{"type":"create_markdown","id":"ticket","text":"# Feature\n- [ ] Build"},{"type":"create_note","id":"criterion","text":"Test"},{"type":"connect","sourceId":"ticket","targetId":"criterion"}]""")
+        val actions = AssistantActions.validate(raw, canvas("[]"), UUID.randomUUID(), json)
+        assertEquals(420.0, actions[0].width)
+        assertEquals(actions[0].id, actions[2].sourceId)
+        val long = json.createArrayNode().add(json.createObjectNode().put("type", "create_markdown").put("text", "x".repeat(5000)))
+        assertEquals(5000, AssistantActions.validate(long, canvas("[]"), UUID.randomUUID(), json).single().text.length)
+        (long[0] as com.fasterxml.jackson.databind.node.ObjectNode).put("text", "x".repeat(10_001))
+        assertThrows(ClientException::class.java) { AssistantActions.validate(long, canvas("[]"), UUID.randomUUID(), json) }
+    }
+
     @Test fun `bound labels count once and deleted objects are excluded`() {
         val canvas = canvas("""[
             {"id":"note","type":"rectangle","customData":{"teamCanvasKind":"note"}},

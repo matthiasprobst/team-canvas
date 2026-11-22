@@ -4,13 +4,15 @@ import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/data/transform";
 import type { AssistantProposal } from "./assistant";
 import type { BoardState } from "./protocol";
+import { createMarkdownElement } from "./markdownElement";
+import { markdownSource } from "./markdownCore";
 
 /** Compile allowlisted actions into native editable elements; the model never supplies scene JSON. */
 export function compileAssistantProposal(editor: ExcalidrawImperativeAPI, proposal: AssistantProposal, board: BoardState) {
   if (proposal.status !== "pending" || proposal.boardId !== board.id || proposal.pageId !== board.pageId || proposal.epoch !== board.epoch || proposal.roundId !== board.roundId)
     throw new Error("This proposal belongs to an earlier page or poker round. Please ask again.");
   const current = editor.getSceneElementsIncludingDeleted();
-  const live = new Map(current.filter(element => !element.isDeleted).map(element => [element.id, element]));
+  const live = new Map<string, ExcalidrawElement>(current.filter(element => !element.isDeleted).map(element => [element.id, element]));
   if (proposal.actions.some(action => action.type !== "update_text" && live.has(action.id)))
     throw new Error("This proposal has already been added to the canvas.");
   const app = editor.getAppState();
@@ -31,22 +33,31 @@ export function compileAssistantProposal(editor: ExcalidrawImperativeAPI, propos
     }
   }
   const skeletons: ExcalidrawElementSkeleton[] = [];
+  const markdownElements: ExcalidrawElement[] = [];
   for (const action of proposal.actions) {
     if (!action.type.startsWith("create_")) continue;
     const common = { id: action.id, x: origin.x + action.x, y: origin.y + action.y, strokeColor: "#334155" };
-    if (action.type === "create_text") skeletons.push({ ...common, type: "text", text: action.text, fontSize: 24 });
+    if (action.type === "create_markdown") markdownElements.push(createMarkdownElement(action.text, common.x, common.y, action.width, action.height, action.id, action.color));
+    else if (action.type === "create_text") skeletons.push({ ...common, type: "text", text: action.text, fontSize: 24 });
     else skeletons.push({ ...common, type: action.type === "create_note" ? "rectangle" : action.shape,
       width: action.width, height: action.height, backgroundColor: action.color, fillStyle: "solid",
       ...(action.type === "create_note" ? { strokeColor: "#b08900", customData: { teamCanvasKind: "note" } } : {}),
       ...(action.text ? { label: { ...{ id: `${action.id}_text` }, text: action.text, fontSize: 22, textAlign: "left", verticalAlign: "top" } } : {}),
     });
   }
-  const created = convertToExcalidrawElements(skeletons, { regenerateIds: false });
+  const created = [...convertToExcalidrawElements(skeletons, { regenerateIds: false }), ...markdownElements];
   created.forEach(element => live.set(element.id, element));
   const changes = new Map<string, ExcalidrawElement>(created.map(element => [element.id, element]));
   for (const action of proposal.actions) {
     if (action.type === "update_text") {
       const target = live.get(action.id);
+      if (target && markdownSource(target) !== null) {
+        if (target.locked) throw new Error("This note is locked.");
+        const next = { ...target, customData: { teamCanvasKind: "markdown", markdown: action.text }, version: target.version + 1, versionNonce: Math.floor(Math.random() * 2 ** 30) };
+        changes.set(next.id, next);
+        live.set(next.id, next);
+        continue;
+      }
       const textId = target?.type === "text" ? target.id : target?.boundElements?.find(binding => binding.type === "text")?.id;
       const text = textId ? live.get(textId) : undefined;
       if (!text || text.type !== "text" || text.locked || target?.locked) throw new Error("The text is unavailable or locked. Please regenerate this proposal.");

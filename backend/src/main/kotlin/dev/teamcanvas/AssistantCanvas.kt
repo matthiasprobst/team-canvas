@@ -8,6 +8,7 @@ data class CanvasObject(
     val id: String, val kind: String, val text: String,
     val x: Double, val y: Double, val width: Double, val height: Double,
     val textId: String? = null, val sourceId: String? = null, val targetId: String? = null,
+    val format: String = "plain",
 )
 data class CanvasFacts(val objects: Int, val notes: Int, val shapes: Int, val texts: Int, val connections: Int, val other: Int, val rawElements: Int)
 data class AssistantCanvas(val board: BoardState, val pages: List<CanvasSheet>, val scope: String, val counts: CanvasFacts, val objects: List<CanvasObject>)
@@ -33,7 +34,8 @@ object AssistantProjection {
             val id = element.path("id").asText()
             val type = element.path("type").asText()
             val label = labels[id]
-            val note = element.path("customData").path("teamCanvasKind").asText() == "note" ||
+            val markdown = type == "embeddable" && element.path("customData").path("teamCanvasKind").asText() == "markdown"
+            val note = markdown || element.path("customData").path("teamCanvasKind").asText() == "note" ||
                 (type == "rectangle" && label != null && element.path("backgroundColor").asText() == "#fff3bf" && element.path("strokeColor").asText() == "#b08900")
             val kind = when {
                 note -> "note"
@@ -42,11 +44,11 @@ object AssistantProjection {
                 type == "text" -> "text"
                 else -> "other"
             }
-            CanvasObject(id, kind, (label ?: element).path("text").asText(""),
+            CanvasObject(id, kind, if (markdown) element.path("customData").path("markdown").asText() else (label ?: element).path("text").asText(""),
                 element.path("x").asDouble(), element.path("y").asDouble(), element.path("width").asDouble(), element.path("height").asDouble(),
                 label?.path("id")?.asText(),
                 element.path("startBinding").path("elementId").asText().takeIf { it in ids },
-                element.path("endBinding").path("elementId").asText().takeIf { it in ids })
+                element.path("endBinding").path("elementId").asText().takeIf { it in ids }, if (markdown) "markdown" else "plain")
         }
         fun count(kind: String) = objects.count { it.kind == kind }
         return AssistantCanvas(state, pages, scope, CanvasFacts(objects.size, count("note"), count("shape"), count("text"), count("connection"), count("other"), live.size), objects)
@@ -65,12 +67,14 @@ object AssistantActions {
         if (!raw.isArray || raw.size() !in 1..20) fail()
         val objects = canvas.objects.associateBy { it.id }
         val local = mutableSetOf<String>()
+        val spacious = raw.any { it.path("type").asText() == "create_markdown" }
         val actions = raw.mapIndexed { index, item ->
             if (!item.isObject) fail()
             val type = item.path("type").asText()
-            if (type !in setOf("create_note", "create_shape", "create_text", "connect", "update_text")) fail()
+            if (type !in setOf("create_note", "create_markdown", "create_shape", "create_text", "connect", "update_text")) fail()
             val text = item.path("text").asText("")
-            if (text.length > 2000 || (type in setOf("create_note", "create_text", "update_text") && text.isBlank())) fail()
+            val markdown = type == "create_markdown" || (type == "update_text" && objects[item.path("id").asText()]?.format == "markdown")
+            if (text.length > (if (markdown) 10_000 else 2000) || (type in setOf("create_note", "create_markdown", "create_text", "update_text") && text.isBlank())) fail()
             val id = if (type == "update_text") item.path("id").asText() else "ai_${proposalId.toString().replace("-", "")}_$index"
             val ref = item.path("id").asText()
             if (type.startsWith("create_") && ref.isNotBlank()) {
@@ -86,8 +90,8 @@ object AssistantActions {
             }
             CanvasAction(type, id, text, shape, color,
                 item.path("sourceId").asText().takeIf { it.isNotBlank() }, item.path("targetId").asText().takeIf { it.isNotBlank() },
-                number("x", (index % 3) * 260.0, -100_000.0, 100_000.0), number("y", (index / 3) * 210.0, -100_000.0, 100_000.0),
-                number("width", 220.0, 40.0, 1200.0), number("height", 170.0, 40.0, 1200.0))
+                number("x", (index % 3) * (if (spacious) 460.0 else 260.0), -100_000.0, 100_000.0), number("y", (index / 3) * (if (spacious) 400.0 else 210.0), -100_000.0, 100_000.0),
+                number("width", if (markdown) 420.0 else 220.0, 40.0, 1200.0), number("height", if (markdown) 360.0 else 170.0, 40.0, 1200.0))
         }
         val remap = raw.mapIndexedNotNull { index, item ->
             item.path("id").asText().takeIf { actions[index].type.startsWith("create_") && it.isNotBlank() }?.let { it to actions[index].id }
@@ -107,7 +111,7 @@ object AssistantActions {
                     action.copy(sourceId = source, targetId = destination)
                 }
                 "update_text" -> {
-                    if (objects[action.id]?.let { it.kind == "text" || it.textId != null } != true) fail()
+                    if (objects[action.id]?.let { it.kind == "text" || it.textId != null || it.format == "markdown" } != true) fail()
                     action
                 }
                 else -> action

@@ -26,6 +26,16 @@ During poker, the canvas chat can use shared content and this tab's private draf
 
 Codex, OpenCode, and Claude Code can connect to the deployment's `/mcp` endpoint. They can inspect saved data while the canvas is closed and save proposals for review here. Open the canvas chat to review them; submitting a proposal does not apply it automatically. External assistants use their own model service. See [connection and AI configuration](local-development.md#ai-chat-and-external-assistants).
 
+## Write Markdown notes
+
+Choose **Markdown note** in the toolbar to create a structured ticket or longer description. Write or paste Markdown in the source editor and check the adjacent preview, then choose **Save Markdown note**. Headings, bold/italic text, lists, task lists, tables, links, and code blocks render directly on the canvas. Notes can contain up to 10,000 characters. Edit checkbox states in the source using `- [ ]` and `- [x]`.
+
+Select the note and choose **Edit Markdown** to reopen its source. Double-click the note to scroll its contents or open links; its header also has an **Edit** button. Use the normal selection and arrow tools to move, resize, duplicate, delete, and connect Markdown notes. Undo and redo use the editor's normal controls. If someone edits the same source while your editor is open, saving reports the conflict so you can copy your work and reopen the latest version.
+
+The assistant can create Markdown notes and refine their source through reviewed proposals. Markdown notes count as one note, and the assistant can read their source and traverse their connections. During poker, new Markdown notes remain private until reveal and shared notes cannot be edited.
+
+Raw HTML is ignored and external images display as alt text. Image exports show a placeholder for Markdown notes; canvas saves and downloaded drafts retain the source.
+
 ## Invite people and manage access
 
 The owner opens **Share → Create invitation link** and sends the link to colleagues. Recipients must sign in and explicitly accept; an invitation grants editing access. There is no guest or read-only role.

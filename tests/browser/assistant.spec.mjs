@@ -267,3 +267,42 @@ test('chat-created poker notes stay private and external MCP sees shared content
     await alice.close(); await bob.close();
   }
 });
+
+test('MCP creates connected Markdown ticket proposals and chat refines their source', async ({ browser }) => {
+  const context = await browser.newContext({ baseURL: base });
+  let board;
+  try {
+    const page = await context.newPage();
+    await login(page, 'alice');
+    board = await api(context, '/api/boards', { name: `Markdown MCP ${Date.now()}` });
+    const token = await oauthToken(context);
+    const proposal = await mcp(context, token, 'tools/call', { name: 'propose_changes', arguments: {
+      boardId: board.id, message: 'Add a ticket and its acceptance criterion.', actions: [
+        { type: 'create_markdown', id: 'ticket', text: '# CANVAS-42\n\n## Acceptance criteria\n- [ ] Verify permissions' },
+        { type: 'create_note', id: 'criterion', text: 'Check access' },
+        { type: 'connect', sourceId: 'ticket', targetId: 'criterion', text: 'requires' },
+      ],
+    } });
+    expect(proposal.isError).toBe(false);
+    await page.goto(`/b/${board.id}`);
+    await page.getByRole('button', { name: 'Open AI assistant', exact: true }).click();
+    await addLatest(page);
+    await expect(page.getByRole('article', { name: 'Markdown note', exact: true }).getByRole('heading', { name: 'CANVAS-42', exact: true })).toBeVisible();
+    const inspected = await mcp(context, token, 'tools/call', { name: 'inspect_canvas', arguments: { boardId: board.id } });
+    const canvas = inspected.structuredContent.result;
+    expect(canvas.counts.notes).toBe(2);
+    expect(canvas.counts.connections).toBe(1);
+    const ticket = canvas.objects.find(object => object.format === 'markdown');
+    expect(ticket.text).toContain('- [ ] Verify permissions');
+    const connected = await mcp(context, token, 'tools/call', { name: 'get_connected_notes', arguments: { boardId: board.id, id: ticket.id } });
+    expect(connected.structuredContent.result.relatedObjects[0].text).toBe('Check access');
+    await ask(page, 'Refine this markdown ticket');
+    await addLatest(page);
+    await expect(page.getByRole('article', { name: 'Markdown note', exact: true }).getByRole('heading', { name: 'Refined ticket', exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'Refined ticket', exact: true })).toBeVisible();
+  } finally {
+    if (board) await api(context, `/api/boards/${board.id}`, undefined, 'DELETE', 204);
+    await context.close();
+  }
+});
