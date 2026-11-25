@@ -16,10 +16,10 @@ class AccessPolicy {
     lateinit var origins: String
 
     @ConfigProperty(name = "team-canvas.http-requests-per-minute", defaultValue = "240")
-    @JvmField var httpRequestsPerMinute: Int = 240
+    @JvmField final var httpRequestsPerMinute: Int = 240
 
     @ConfigProperty(name = "team-canvas.join-requests-per-minute", defaultValue = "30")
-    @JvmField var joinRequestsPerMinute: Int = 30
+    @JvmField final var joinRequestsPerMinute: Int = 30
 
     fun allowsOrigin(origin: String?): Boolean =
         if (origin.isNullOrBlank()) false else origins.split(',').map { it.trim() }.contains(origin)
