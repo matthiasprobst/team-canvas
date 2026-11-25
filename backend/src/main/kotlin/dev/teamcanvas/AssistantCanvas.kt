@@ -21,7 +21,7 @@ data class AssistantProposal(
     val id: UUID, val boardId: UUID, val pageId: UUID, val epoch: Long, val roundId: UUID?,
     val message: String, val actions: List<CanvasAction>, val status: String = "pending",
 )
-data class AssistantReply(val message: String, val referenceIds: List<String> = emptyList(), val proposal: AssistantProposal? = null, val canvas: AssistantCanvas? = null)
+data class AssistantReply(val message: String, val referenceIds: List<String> = emptyList(), val proposal: AssistantProposal? = null, val canvas: AssistantCanvas? = null, val skill: String? = null)
 
 /** Logical notes combine their container and bound text; counts never depend on model arithmetic. */
 object AssistantProjection {

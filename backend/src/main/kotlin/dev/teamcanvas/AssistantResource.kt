@@ -16,7 +16,7 @@ class AssistantResource @Inject constructor(private val service: AssistantServic
     private fun identity() = loginIdentity(security.userPrincipal)
 
     @GET
-    fun inspect(@PathParam("id") id: UUID, @QueryParam("pageId") pageId: UUID?) = mapOf("configured" to chat.configured(), "canvas" to service.inspect(identity(), id, pageId, capability).canvas)
+    fun inspect(@PathParam("id") id: UUID, @QueryParam("pageId") pageId: UUID?) = mapOf("configured" to chat.configured(), "skills" to AssistantSkills.catalog(), "canvas" to service.inspect(identity(), id, pageId, capability).canvas)
 
     @POST
     fun chat(@PathParam("id") id: UUID, body: AssistantChatRequest): AssistantReply {

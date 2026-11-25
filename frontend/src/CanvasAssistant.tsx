@@ -4,7 +4,7 @@ import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { SessionView } from "./syncSession";
 import type { BoardState } from "./protocol";
-import { assistantRequest, type AssistantCanvas, type AssistantProposal, type AssistantReply } from "./assistant";
+import { assistantRequest, type AssistantCanvas, type AssistantProposal, type AssistantReply, type AssistantSkill } from "./assistant";
 import { compileAssistantProposal, showAssistantObjects } from "./assistantEditor";
 
 import { assistantHistory } from "./assistantHistory";
@@ -12,7 +12,7 @@ import { elementFingerprint } from "./syncCore";
 import type { PreviewSnapshot } from "./AssistantPreview";
 const AssistantPreview = lazy(() => import("./AssistantPreview"));
 
-interface Message { role: "user" | "assistant"; content: string; referenceIds?: string[]; revision?: number; proposalId?: string; }
+interface Message { role: "user" | "assistant"; content: string; referenceIds?: string[]; revision?: number; proposalId?: string; skill?: string | null; }
 interface Props {
   board: BoardState;
   view: SessionView;
@@ -41,6 +41,8 @@ function ProposalCard({ proposal, ready, applyingId, apply, dismiss, objects, pr
 export default function CanvasAssistant({ board, view, editorRef, applyAssistant }: Props) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
+  const [skills, setSkills] = useState<AssistantSkill[]>([]);
+  const [previousSkill, setPreviousSkill] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [summary, setSummary] = useState("");
   const [includeSaved, setIncludeSaved] = useState(true);
@@ -72,11 +74,12 @@ export default function CanvasAssistant({ board, view, editorRef, applyAssistant
     const refresh = async () => {
       try {
         const [status, pending] = await Promise.all([
-          assistantRequest<{ configured: boolean; canvas: AssistantCanvas }>(board, `?pageId=${board.pageId}`, controller.signal),
+          assistantRequest<{ configured: boolean; canvas: AssistantCanvas; skills?: AssistantSkill[] }>(board, `?pageId=${board.pageId}`, controller.signal),
           assistantRequest<AssistantProposal[]>(board, `/proposals?pageId=${board.pageId}`, controller.signal),
         ]);
         if (controller.signal.aborted) return;
         setConfigured(status.configured);
+        setSkills(status.skills ?? []);
         setCanvas(status.canvas);
         setProposals(pending);
       } catch (problem) {
@@ -99,35 +102,45 @@ export default function CanvasAssistant({ board, view, editorRef, applyAssistant
     }
   }, [applyingId, view.lastAcknowledgedCommandId, view.unsaved, view.error]);
 
+  const command = input.trim().split(/\s+/)[0].toLowerCase();
+  const directCommand = /^\/(?:count|skills|help)$|^\/layout(?:\s+(?:flow|grid))?$/i.test(input.trim());
+  const canSend = command === "/new" || (ready && !view.unsaved && (configured === true || directCommand));
+
   async function send() {
     const text = input.trim();
-    if (text === "/new") {
+    if (command === "/new" && text.toLowerCase() === "/new") {
       requestRef.current?.abort(); requestRef.current = null;
-      setMessages([]); setSummary(""); setIncludeSaved(false); setAutoAccept(false); autoAcceptRef.current = false; setAutoProposal(null); setInput(""); setError(""); setLoading(false);
+      setPreviousSkill(null); setMessages([]); setSummary(""); setIncludeSaved(false); setAutoAccept(false); autoAcceptRef.current = false; setAutoProposal(null); setInput(""); setError(""); setLoading(false);
       return;
     }
-    if (text.startsWith("/") && text !== "/compact") { setError("Available commands: /new and /compact."); return; }
-    const history = assistantHistory(messages, summary, proposals, includeSaved, text === "/compact");
-    if (text === "/compact" && !history.length) { setError("There is no conversation to compact yet."); return; }
-    if (!text || !ready || loading || configured !== true || view.unsaved) return;
-    const selectedIds = context === "selection" && text !== "/compact" ? Object.keys(editorRef.current?.getAppState().selectedElementIds ?? {}) : [];
-    if (text !== "/compact" && context === "selection" && !selectedIds.length) { setError("Select objects on the canvas first, or choose Current page."); return; }
+    const compact = text.toLowerCase() === "/compact";
+    const help = command === "/skills" || command === "/help";
+    if (text.startsWith("/") && !compact && !help && command !== "/count" && !skills.some(skill => skill.command === command)) {
+      setError("Unknown command. Enter /skills to see available skills.");
+      return;
+    }
+    const history = assistantHistory(messages, summary, proposals, includeSaved, compact);
+    if (compact && !history.length) { setError("There is no conversation to compact yet."); return; }
+    if (!text || !canSend || loading) return;
+    const selectedIds = context === "selection" && !compact && !help ? Object.entries(editorRef.current?.getAppState().selectedElementIds ?? {}).filter(([, selected]) => selected).map(([id]) => id) : [];
+    if (!compact && !help && context === "selection" && !selectedIds.length) { setError("Select objects on the canvas first, or choose Current page."); return; }
     const controller = new AbortController();
     requestRef.current = controller;
     setError("");
     setInput("");
     setLoading(true);
-    if (text !== "/compact") setMessages(previous => [...previous.slice(-23), { role: "user", content: text }]);
+    if (!compact) setMessages(previous => [...previous.slice(-23), { role: "user", content: text }]);
     try {
       const reply = await assistantRequest<AssistantReply>(board, "", controller.signal, {
         message: text, pageId: board.pageId, epoch: board.epoch, selectedIds,
-        history,
+        history, previousSkill,
       });
       if (controller.signal.aborted) return;
-      if (text === "/compact") {
+      if (compact) {
         setSummary(reply.message); setIncludeSaved(false); setMessages([{ role: "assistant", content: reply.message }]); return;
       }
-      setMessages(previous => [...previous, { role: "assistant", content: reply.message, referenceIds: reply.referenceIds, revision: reply.canvas?.board.revision, proposalId: reply.proposal?.id }]);
+      setPreviousSkill(reply.proposal ? null : reply.skill ?? null);
+      setMessages(previous => [...previous, { role: "assistant", skill: reply.skill, content: reply.message, referenceIds: reply.referenceIds, revision: reply.canvas?.board.revision, proposalId: reply.proposal?.id }]);
       if (reply.canvas && reply.canvas.scope !== "selection") setCanvas(reply.canvas);
       if (reply.proposal && autoAcceptRef.current) setAutoProposal(reply.proposal);
       if (reply.proposal) setProposals(previous => [reply.proposal!, ...previous.filter(proposal => proposal.id !== reply.proposal!.id)]);
@@ -206,6 +219,15 @@ export default function CanvasAssistant({ board, view, editorRef, applyAssistant
         </select></label>
         <small>{autoAccept ? "New changes from this chat apply automatically while it stays open. Saved and external proposals still need review." : "Preview proposals before approval. Auto-accept resets when you close the chat or start a new conversation."}</small>
       </div>
+      {skills.length > 0 && <details className="assistant-skill-picker">
+        <summary>Skills</summary>
+        <div className="assistant-skill-options">
+          {skills.map(skill => <button key={skill.name} type="button" className="assistant-suggestion"
+            onClick={event => { setInput(`${skill.command} `); event.currentTarget.closest("details")?.removeAttribute("open"); textarea.current?.focus(); }}>
+            <span><strong>{skill.title}</strong> <code>{skill.command}</code><small>{skill.description}</small></span>
+          </button>)}
+        </div>
+      </details>}
       <div className="assistant-content">
         {proposals.some(proposal => !messages.some(message => message.proposalId === proposal.id)) && <p className="assistant-activity-label">Saved proposal activity · These cards are not a complete chat transcript.</p>}
         {proposals.filter(proposal => proposal.status !== "dismissed" && !messages.some(message => message.proposalId === proposal.id)).map(proposal =>
@@ -219,7 +241,7 @@ export default function CanvasAssistant({ board, view, editorRef, applyAssistant
         </div>}
         <div role="log" aria-label="Assistant conversation" aria-live="polite" aria-relevant="additions">
           {messages.map((message, index) => <article className={`assistant-message is-${message.role}`} key={index}>
-            <span className="assistant-speaker">{message.role === "user" ? "You" : "Assistant"}</span>
+            <span className="assistant-speaker">{message.role === "user" ? "You" : skills.find(skill => skill.name === message.skill)?.title ?? "Assistant"}</span>
             <p>{message.content}</p>
             {message.referenceIds?.map(id => <button className="assistant-reference" key={id} onClick={() => { if (editorRef.current) showAssistantObjects(editorRef.current, [id]); }}>
               {canvas?.objects.find(object => object.id === id)?.text.slice(0, 45) || "Show object"}<ArrowUpRight size={12} />
@@ -233,7 +255,7 @@ export default function CanvasAssistant({ board, view, editorRef, applyAssistant
         <div ref={end} />
       </div>
       {canvas && <div className="assistant-facts" aria-label="Canvas counts">Page: {canvas.counts.notes} notes · {canvas.counts.shapes} shapes · {canvas.counts.texts} texts · {canvas.counts.connections} connections</div>}
-      {configured === false && <p className="assistant-notice" role="status">AI chat is not configured. Your administrator can connect an AI service. External assistant proposals can still be reviewed here.</p>}
+      {configured === false && <p className="assistant-notice" role="status">AI model service is not configured. Counts, flow/grid layouts, and proposal review are available.</p>}
       {!view.online && <p className="assistant-notice" role="status">Offline. Reconnect to ask questions or apply changes.</p>}
       {view.unsaved && <p className="assistant-notice" role="status">Waiting for your canvas changes to save…</p>}
       {error && <p className="assistant-error" role="alert">{error}</p>}
@@ -244,9 +266,9 @@ export default function CanvasAssistant({ board, view, editorRef, applyAssistant
             event.stopPropagation();
             if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); }
           }} />
-        <div className="assistant-composer-actions"><span>/new · /compact · Review changes before adding.</span>
+        <div className="assistant-composer-actions"><span>/skills · /count · /new · /compact</span>
           {loading ? <button className="button" type="button" onClick={() => { requestRef.current?.abort(); setLoading(false); }}><Square size={13} />Stop</button>
-            : <button className="button primary" type="submit" aria-label="Send message" disabled={!input.trim() || (input.trim() !== "/new" && (!ready || view.unsaved || configured !== true))}><Send size={15} />Send</button>}
+            : <button className="button primary" type="submit" aria-label="Send message" disabled={!input.trim() || !canSend}><Send size={15} />Send</button>}
         </div>
       </form>
     </section>}

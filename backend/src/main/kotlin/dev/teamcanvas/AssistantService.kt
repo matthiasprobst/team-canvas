@@ -17,14 +17,27 @@ class AssistantService @Inject constructor(
     fun inspect(identity: LoginIdentity, boardId: UUID, pageId: UUID? = null, capability: String? = null): AssistantScope =
         authorized(identity, boardId, pageId, capability) { _, scope -> scope }
 
+    fun requireCurrentContext(identity: LoginIdentity, expected: BoardState) {
+        val user = accounts.current(identity)
+        repository.transaction { connection ->
+            val current = repository.board(connection, expected.id)
+            requireMember(connection, identity, user.id, expected.id)
+            if (current.epoch != expected.epoch) throw ClientException("stale_round", "The page or poker round changed. Please ask again.")
+        }
+    }
+
+    private fun requireMember(c: Connection, identity: LoginIdentity, userId: UUID, boardId: UUID): Pair<UUID, String> {
+        accounts.requireLogin(c, userId, identity.sid)
+        return c.query("SELECT id,role FROM participants WHERE board_id=? AND user_id=? AND NOT revoked FOR SHARE", boardId, userId) {
+            if (it.next()) it.getObject(1, UUID::class.java) to it.getString(2) else null
+        } ?: throw ClientException("not_found", "Canvas not found or access is unavailable.")
+    }
+
     private fun <T> authorized(identity: LoginIdentity, boardId: UUID, pageId: UUID?, capability: String?, action: (Connection, AssistantScope) -> T): T {
         val user = accounts.current(identity)
         return repository.transaction { c ->
             val current = repository.board(c, boardId)
-            accounts.requireLogin(c, user.id, identity.sid)
-            val member = c.query("SELECT id,role FROM participants WHERE board_id=? AND user_id=? AND NOT revoked FOR SHARE", boardId, user.id) {
-                if (it.next()) it.getObject(1, UUID::class.java) to it.getString(2) else null
-            } ?: throw ClientException("not_found", "Canvas not found or access is unavailable.")
+            val member = requireMember(c, identity, user.id, boardId)
             val pages = repository.pages(c, boardId)
             val page = pageId ?: current.pageId
             if (pages.none { it.id == page }) throw ClientException("not_found", "Page not found.")

@@ -466,3 +466,61 @@ test('restored activity compacts and previews stay read-only with explicit auto-
     await alice.close(); await bob.close();
   }
 });
+
+test('canvas skills route commands, review without editing, and share workflows over MCP', async ({ browser }, testInfo) => {
+  const alice = await browser.newContext();
+  const bob = await browser.newContext();
+  let board;
+  try {
+    const page = await alice.newPage(), peer = await bob.newPage();
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await login(page, 'alice'); await login(peer, 'bob');
+    board = await api(alice, '/api/boards', { name: `Skills verification ${Date.now()}` });
+    const invite = await api(alice, `/api/boards/${board.id}/invitations`, {});
+    await api(bob, `/api/boards/${board.id}/join`, { inviteKey: invite.inviteKey });
+    const remote = scene(peer);
+    await Promise.all([page.goto(`/b/${board.id}`), peer.goto(`/b/${board.id}`)]);
+    await expect(page).toHaveTitle('Team Canvas');
+    await page.getByRole('button', { name: 'Open AI assistant', exact: true }).click();
+    const panel = page.getByLabel('AI assistant', { exact: true });
+    const log = page.getByRole('log');
+    await panel.getByText('Skills', { exact: true }).click();
+    await panel.getByRole('button', { name: /Ticket writer/ }).click();
+    await expect(page.getByLabel('Ask about your canvas')).toHaveValue('/ticket ');
+    await ask(page, '/ticket Write a Markdown ticket');
+    await expect(log.getByText('Ticket writer', { exact: true })).toBeVisible();
+    await addLatest(page);
+    await expect.poll(() => remote.live().filter(element => element.customData?.teamCanvasKind === 'markdown').length).toBe(1);
+    await ask(page, '/count');
+    await expect(log).toContainText('1 notes');
+    await ask(page, '/overview');
+    await expect(log.getByText('This page has 1 notes.', { exact: true })).toBeVisible();
+    await expect(log.getByRole('button', { name: /CANVAS-42/ })).toBeVisible();
+    await ask(page, 'Review these tickets');
+    await expect(log).toContainText('Add an observable acceptance criterion.');
+    await expect(panel.getByRole('button', { name: 'Add to canvas', exact: true })).toHaveCount(0);
+    await ask(page, '/refine Help me refine the fixture feature');
+    await expect(log).toContainText('Who can approve the request?');
+    await ask(page, 'Managers can approve it.');
+    await expect(log).toContainText('Add manager approval to the acceptance criteria.');
+    await ask(page, 'Create three notes: Research, Design, Build'); await addLatest(page);
+    const positions = () => remote.live().map(({ id, x, y }) => [id, x, y]).sort();
+    const beforeLayout = positions();
+    const idsBefore = remote.live().map(element => element.id).sort();
+    await ask(page, '/layout grid'); await addLatest(page);
+    await expect.poll(positions).not.toEqual(beforeLayout);
+    expect(remote.live().map(element => element.id).sort()).toEqual(idsBefore);
+    const token = await oauthToken(alice);
+    const discovery = await mcp(alice, token, 'tools/call', { name: 'canvas_skills', arguments: {} });
+    expect(discovery.structuredContent.result.skills.map(skill => skill.name)).toEqual(['ticket', 'refine', 'relations', 'layout', 'overview', 'review']);
+    const review = await mcp(alice, token, 'tools/call', { name: 'canvas_skills', arguments: { name: 'review' } });
+    expect(review.structuredContent.result.readOnly).toBe(true);
+    expect(review.structuredContent.result.instructions).toContain('Quality review');
+    await page.screenshot({ path: testInfo.outputPath('canvas-skills.png') });
+    expect(errors).toEqual([]);
+  } finally {
+    if (board) await api(alice, `/api/boards/${board.id}`, undefined, 'DELETE', 204);
+    await alice.close(); await bob.close();
+  }
+});

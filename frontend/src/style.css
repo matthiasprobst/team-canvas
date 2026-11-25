@@ -298,3 +298,8 @@ body { margin: 0; background: #f5f7fb; }
 @media (max-width: 700px) {
   .assistant-preview-canvas { height: min(38vh, 320px); min-height: 200px; }
 }
+
+.assistant-skill-picker { padding: 7px 14px; border-bottom: 1px solid #e8edf4; font-size: 12px; }
+.assistant-skill-picker summary { cursor: pointer; font-weight: 600; }
+.assistant-skill-options { max-height: min(30vh, 210px); overflow-y: auto; padding: 0 3px 3px; }
+.assistant-skill-options small { display: block; margin-top: 3px; color: #647389; }

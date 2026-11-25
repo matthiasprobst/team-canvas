@@ -18,7 +18,18 @@ createServer(async (request, response) => {
   let message;
   const tool = (name, values = {}) => ({ role: 'assistant', content: null, tool_calls: [{ id: 'fixture_call', type: 'function', function: { name, arguments: JSON.stringify({ ...args, ...values }) } }] });
   if (question.includes('provider failure')) { response.writeHead(503).end('test failure'); return; }
-  if (last.role === 'tool') {
+  const instructions = messages[0].content.split('Current saved canvas: ')[0];
+  const reference = context.objects[0]?.id;
+  if (instructions.includes('Use the Quality review skill.')) {
+    if (JSON.parse(body).tools.some(tool => tool.function.name === 'propose_changes')) { response.writeHead(500).end(); return; }
+    message = { role: 'assistant', content: `Add an observable acceptance criterion. [object:${reference}]` };
+  } else if (instructions.includes('Use the Canvas overview skill.')) {
+    message = { role: 'assistant', content: `This page has ${context.counts.notes} notes. [object:${reference}]` };
+  } else if (instructions.includes('Use the Feature refinement skill.') && question.includes('fixture feature')) {
+    message = { role: 'assistant', content: 'Who can approve the request?' };
+  } else if (instructions.includes('Use the Feature refinement skill.') && question === 'Managers can approve it.') {
+    message = { role: 'assistant', content: 'Add manager approval to the acceptance criteria.' };
+  } else if (last.role === 'tool') {
     const result = JSON.parse(last.content);
     message = { role: 'assistant', content: `The notes say: ${result.objects.map(object => object.text).join('; ')}.` };
   } else if (/how many|number of|count/i.test(question)) message = tool('count_objects');

@@ -21,7 +21,14 @@ export interface AssistantProposal {
   id: string; boardId: string; pageId: string; epoch: number; roundId: string | null;
   message: string; actions: CanvasAction[]; status: "pending" | "applied" | "dismissed";
 }
-export interface AssistantReply { message: string; referenceIds: string[]; proposal: AssistantProposal | null; canvas: AssistantCanvas | null; }
+export interface AssistantSkill {
+  name: string;
+  title: string;
+  command: string;
+  description: string;
+  example: string;
+}
+export interface AssistantReply { message: string; referenceIds: string[]; proposal: AssistantProposal | null; canvas: AssistantCanvas | null; skill?: string | null; }
 
 export async function assistantRequest<T>(board: BoardState, path: string, signal?: AbortSignal, body?: object, method = body ? "POST" : "GET"): Promise<T> {
   const response = await fetch(`/api/boards/${board.id}/assistant${path}`, {

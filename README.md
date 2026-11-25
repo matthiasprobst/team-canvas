@@ -162,6 +162,23 @@ claude mcp add --transport http --client-id team-canvas-mcp team_canvas http://l
 
 Start Claude Code from the same directory, run `/mcp`, select `team_canvas`, and authenticate. This is a public OAuth client, so no client secret is needed. If `claude mcp add --help` does not list `--client-id`, upgrade Claude Code before using this flow. See the [Claude Code MCP guide](https://code.claude.com/docs/en/mcp).
 
+### Canvas assistant skills
+
+Open **Skills** in the assistant or enter `/skills` to discover workflows. Add a request after the command or choose a skill and use the current page or selection. Clear natural-language requests can also activate a skill.
+
+| Command | Use it to |
+| --- | --- |
+| `/ticket` | Turn notes into a Markdown ticket with requirements, acceptance criteria, and open questions. |
+| `/refine` | Clarify a feature, ask follow-up questions, and propose updates to existing notes. |
+| `/relations` | Suggest connections, check for duplicates, or label existing arrows. |
+| `/layout flow` or `/layout grid` | Propose a layout for 2–12 existing objects. Add a natural-language request after `/layout` to describe a more specific arrangement. |
+| `/overview` | Summarize the current page or selection with counts and object references. |
+| `/review` | Find gaps, conflicting requirements, and unclear acceptance criteria. |
+
+`/count`, `/skills`, `/help`, and the explicit flow/grid layout commands run without a model call. `/overview` and `/review` are read-only. Changes from other skills use normal proposal review and approval.
+
+For Codex, OpenCode, and Claude Code, ask the client to call the `canvas_skills` MCP tool. It lists skills with no arguments and retrieves a workflow with a name, such as `{"name":"ticket"}`. The client runs the workflow using its own model and the existing authorized canvas tools.
+
 ### Questions, creation, and feature refinement
 
 The embedded chat supports `/new` for a fresh conversation and `/compact` for a model-generated summary retained in later turns. Both leave canvas content and saved proposals intact. Page or round changes still clear conversation context.

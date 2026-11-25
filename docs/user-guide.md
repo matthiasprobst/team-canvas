@@ -18,6 +18,8 @@ Open **AI assistant** at the bottom right. Ask questions such as “How many not
 
 Choose **Current page** or **Selected objects** for context. Counts use saved drawing data, combine a note and its bound text into one object, and exclude deleted content. Text inside uploaded images is not read. Source buttons in an answer select and reveal the referenced objects. Answers indicate when the canvas has changed since they were generated.
 
+Open **Skills** or type `/skills` to discover task workflows. For example, select notes and enter `/ticket Turn these into an implementation ticket`, or enter `/overview` to summarize the current scope. Use **Current page** when refinement needs connected notes outside the selection. Replies identify the skill used and can link to saved objects. `/count` answers from exact saved counts. See [the complete skill catalog](../README.md#canvas-assistant-skills).
+
 Use `/new` to clear the current conversation and its summary. This does not alter the canvas or dismiss saved proposals, and it can cancel an in-progress reply. Use `/compact` to replace the conversation with an AI-generated summary that stays in context for later questions. Compaction requires the configured model service; if it fails, the earlier context is retained. Review the summary for important details before continuing.
 
 After reopening a canvas or signing in again, the **Saved proposal activity** cards restore your retained proposals; the full earlier conversation transcript is not stored. `/compact` can summarize this restored activity, including whether each change is pending or applied, even before you send a new message. `/new` excludes that old activity from the new conversation while retaining the cards for review.

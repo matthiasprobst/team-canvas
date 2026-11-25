@@ -97,6 +97,9 @@ Deleted elements remain as synchronization tombstones until the owner chooses **
 
 ## Assistant and MCP
 
+`AssistantSkills` defines the built-in workflows. The assistant status endpoint provides descriptions and commands to the panel, and the authenticated MCP `canvas_skills` tool provides the same catalog and instructions to external clients. Chat routes explicit commands first, uses conservative natural-language matching, and retains refinement context across a follow-up. Read-only skills receive no proposal tool. Direct counts, help, and explicit flow/grid commands skip model inference. Model reads reuse one authorized scene snapshot per turn, with membership and epoch rechecked after each provider response. Saved proposals still validate against current data and go through the existing review and apply path.
+
+
 Embedded `/new` resets local history and retained summary without mutating scene content or proposals. `/compact` makes a separate model request without tools and retains the returned summary alongside recent turns. Each later request still reads current canvas state. Conversation state remains scoped to the open page/epoch.
 
 `assistantHistory` includes bounded, status-labelled saved proposal activity when a session has no retained summary, allowing compaction after reauthentication. These records are identified as activity rather than a full transcript. `/new` opts the current conversation out of older activity. The same authorized proposal endpoint supplies the records, including private draft capability scoping.

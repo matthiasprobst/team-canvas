@@ -16,7 +16,11 @@ object AssistantLayout {
             val layout = action.path("layout").asText("flow")
             if (layout !in setOf("flow", "grid")) fail()
             val ranks = mutableMapOf<String, Int>()
-            val edges = canvas.objects.filter { it.kind == "connection" && it.sourceId in selected.map { node -> node.id } && it.targetId in selected.map { node -> node.id } }
+            val selectedIds = selected.map { it.id }.toSet()
+            val edges = canvas.objects.filter { it.kind == "connection" && it.sourceId in selectedIds && it.targetId in selectedIds }
+            // Leave room for labels across columns without letting long labels spread the layout indefinitely.
+            val labelGap = (edges.maxOfOrNull { it.text.take(48).length } ?: 0) * 8 + 32
+            val columnGap = maxOf(120, labelGap)
             if (layout == "flow") repeat(selected.size) {
                 for (node in selected) {
                     val parents = edges.filter { it.targetId == node.id }.mapNotNull { it.sourceId }
@@ -35,7 +39,7 @@ object AssistantLayout {
                     output.add(json.createObjectNode().put("type", "move_object").put("id", node.id).put("x", x).put("y", y))
                     y += node.height + 72
                 }
-                x += column.maxOf { it.width } + 120
+                x += column.maxOf { it.width } + columnGap
             }
         }
         return output
