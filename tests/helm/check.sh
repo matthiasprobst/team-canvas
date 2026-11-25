@@ -6,6 +6,17 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 helm lint "$chart" -f "$fixture"
 helm template canvas "$chart" -f "$fixture" > "$work/default.yaml"
+grep -q '/mcp /.well-known/oauth-protected-resource/' "$work/default.yaml"
+helm template canvas "$chart" -f "$fixture" \
+  --set 'assistant.egress[0].cidr=203.0.113.0/24' \
+  --set 'assistant.egress[0].port=443' > "$work/assistant.yaml"
+grep -q 'cidr: "203.0.113.0/24"' "$work/assistant.yaml"
+if helm template canvas "$chart" -f "$fixture" \
+  --set 'assistant.egress[0].cidr=203.0.113.0/24' \
+  --set 'assistant.egress[0].port=0' > /dev/null 2>&1; then
+  echo 'Invalid assistant egress port accepted' >&2
+  exit 1
+fi
 grep -q 'name: TEAM_CANVAS_MAX_CONNECTIONS_PER_CANVAS, value: "30"' "$work/default.yaml"
 helm template canvas "$chart" -f "$fixture" --set limits.maxConnectionsPerCanvas=45 > "$work/connections.yaml"
 grep -q 'name: TEAM_CANVAS_MAX_CONNECTIONS_PER_CANVAS, value: "45"' "$work/connections.yaml"

@@ -89,6 +89,24 @@
         }
       }
     },
+    "assistant": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "egress": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["cidr", "port"],
+            "additionalProperties": false,
+            "properties": {
+              "cidr": {"type": "string", "minLength": 1},
+              "port": {"type": "integer", "minimum": 1, "maximum": 65535}
+            }
+          }
+        }
+      }
+    },
     "monitoring": {
       "type": "object",
       "additionalProperties": false,

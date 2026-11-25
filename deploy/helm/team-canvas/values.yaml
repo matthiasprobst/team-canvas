@@ -10,6 +10,9 @@ ingressClassName: ""
 trustedProxies: ""
 databaseCIDR: ""
 identityCIDR: ""
+assistant:
+  # Explicit provider network access when embedded chat is configured in existingSecret.
+  egress: []
 limits:
   maxConnectionsPerCanvas: 30
   maxPagesPerCanvas: 10

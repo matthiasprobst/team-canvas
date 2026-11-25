@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { ArrowLeft, Share2, StickyNote } from "lucide-react";
+import { ArrowLeft, Share2, StickyNote, FileText } from "lucide-react";
 import { Excalidraw, MainMenu, CaptureUpdateAction, convertToExcalidrawElements } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import type { Account, Identity } from "./api";
@@ -13,6 +13,8 @@ import PageControls from "./PageControls";
 import CanvasStorageDialog from "./CanvasStorageDialog";
 import { ConfirmDialog } from "./Dialog";
 import CanvasTimer from "./CanvasTimer";
+import CanvasAssistant from "./CanvasAssistant";
+import { useMarkdownNotes, validateMarkdownEmbed } from "./useMarkdownNotes";
 
 export default function BoardEditor({ boardId, identity, user }: { boardId: string; identity: Identity; user: Account }) {
   const locationState = useLocation().state as { dashboard?: string } | null;
@@ -33,8 +35,10 @@ export default function BoardEditor({ boardId, identity, user }: { boardId: stri
     createPage,
     selectPage,
     recoveryExported,
+    applyAssistant,
   } = useBoardSession(boardId, identity);
   const { snapshot, online, error } = view;
+  const markdown = useMarkdownNotes(editorRef, view, deleted);
   const [switching, setSwitching] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [storage, setStorage] = useState(false);
@@ -53,6 +57,7 @@ export default function BoardEditor({ boardId, identity, user }: { boardId: stri
         width: 220,
         height: 170,
         backgroundColor: "#fff3bf",
+        customData: { teamCanvasKind: "note" },
         fillStyle: "solid",
         strokeColor: "#b08900",
         label: { text: "Note", fontSize: 22, textAlign: "left", verticalAlign: "top" },
@@ -70,6 +75,7 @@ export default function BoardEditor({ boardId, identity, user }: { boardId: stri
   const { blocker, downloadDraft, waiting } = useBoardNavigation(view, deleted, recoveryExported);
   return (
     <div className="layout">
+      {markdown.dialog}
       {blocker.state === "blocked" && (
         <Modal title="Leave this canvas?" close={() => blocker.reset()}>
           {(view.unsaved || waiting) && (
@@ -185,6 +191,8 @@ export default function BoardEditor({ boardId, identity, user }: { boardId: stri
               <StickyNote size={16} />
               <span>Sticky note</span>
             </button>
+            <button className="nav-button tool-button" aria-label="Markdown note" onClick={event => { event.stopPropagation(); markdown.create(); }} disabled={!markdown.ready}><FileText size={16} /><span>Markdown note</span></button>
+            {markdown.selectedMarkdown && <button className="nav-button tool-button" onClick={markdown.editSelected} disabled={!markdown.canEditSelected}>Edit Markdown</button>}
             {!poker && (
               <button
                 className="primary-action"
@@ -243,7 +251,10 @@ export default function BoardEditor({ boardId, identity, user }: { boardId: stri
           isCollaborating
           UIOptions={{ canvasActions: { loadScene: false, saveToActiveFile: false, export: false } }}
           viewModeEnabled={!editable}
-          onChange={(elements, _appState, files) => onChange(elements, files)}
+          onChange={(elements, appState, files) => { markdown.selectionChanged(elements, appState); onChange(elements, files); }}
+          validateEmbeddable={validateMarkdownEmbed}
+          renderEmbeddable={markdown.renderEmbeddable}
+          onLinkOpen={markdown.onLinkOpen}
           onPointerUpdate={({ pointer: position }) => pointer(position.x, position.y)}
         >
           <MainMenu>
@@ -252,6 +263,7 @@ export default function BoardEditor({ boardId, identity, user }: { boardId: stri
             <MainMenu.DefaultItems.ToggleTheme />
           </MainMenu>
         </Excalidraw>
+        {snapshot && !deleted && <CanvasAssistant key={`${boardId}:${snapshot.board.pageId}:${snapshot.board.epoch}`} board={snapshot.board} view={view} editorRef={editorRef} applyAssistant={applyAssistant} />}
       </main>
     </div>
   );

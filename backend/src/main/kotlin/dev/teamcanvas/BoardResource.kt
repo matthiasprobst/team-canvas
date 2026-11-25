@@ -208,7 +208,8 @@ class ClientErrorMapper : jakarta.ws.rs.ext.ExceptionMapper<ClientException> {
                     "locked" -> 403
                     "rate_limit",
                     "daily_limit" -> 429
-                    "unavailable" -> 503
+                    "unavailable", "assistant_unavailable" -> 503
+                    "stale_round", "stale_proposal" -> 409
                     else -> 400
                 }
             )

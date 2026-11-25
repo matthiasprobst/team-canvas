@@ -22,5 +22,7 @@ export default defineConfig({
   server: { port: 5173, proxy: {
     "/api": { target: proxy, xfwd: true },
     "/ws": { target: proxy, xfwd: true, ws: true },
+    "/mcp": { target: proxy, xfwd: true },
+    "/.well-known/oauth-protected-resource": { target: proxy, xfwd: true },
   } },
 });

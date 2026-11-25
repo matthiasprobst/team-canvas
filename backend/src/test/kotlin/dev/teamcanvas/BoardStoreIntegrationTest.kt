@@ -253,6 +253,89 @@ class BoardStoreIntegrationTest {
         val inviteKey: String,
     )
 
+    private fun assistant() = AssistantService(BoardRepository(dataSource), accounts, SceneRepository(json), json)
+
+    @Test fun `Markdown source remains private during poker and survives reveal`() {
+        val room = room()
+        val service = assistant()
+        val public = (shape("public-ticket") as com.fasterxml.jackson.databind.node.ObjectNode)
+            .put("type", "embeddable").put("link", ElementValidation.MARKDOWN_LINK)
+            .apply { putObject("customData").put("teamCanvasKind", "markdown").put("markdown", "# Public ticket") }
+        store.patch(room.host, context(room.host), ElementValidation.validateElements(json.createArrayNode().add(public)), emptyMap())
+        assertEquals("markdown", service.inspect(room.visitor, room.board.id).canvas.objects.single().format)
+        rounds.start(room.host, context(room.host))
+        val private = public.deepCopy().put("id", "private-ticket")
+            .apply { putObject("customData").put("teamCanvasKind", "markdown").put("markdown", "# Private criterion") }
+        store.patch(room.guest, context(room.guest), ElementValidation.validateElements(json.createArrayNode().add(private)), emptyMap())
+        assertEquals(listOf("# Public ticket"), service.inspect(room.owner, room.board.id).canvas.objects.map { it.text })
+        assertEquals(listOf("# Public ticket"), service.inspect(room.visitor, room.board.id).canvas.objects.map { it.text })
+        assertTrue(service.inspect(room.visitor, room.board.id, capability = room.guest.draftKey).canvas.objects.any { it.text == "# Private criterion" })
+        rounds.stop(room.host, context(room.host))
+        assertEquals(setOf("# Public ticket", "# Private criterion"), service.inspect(room.owner, room.board.id).canvas.objects.map { it.text }.toSet())
+    }
+
+    @Test fun `assistant inspection preserves membership and capability privacy`() {
+        val room = room()
+        val service = assistant()
+        error("not_found") { service.inspect(user(), room.board.id) }
+        rounds.start(room.host, context(room.host))
+        val privateText = (shape("private-note") as com.fasterxml.jackson.databind.node.ObjectNode).put("type", "text").put("text", "Private feature idea")
+        store.patch(room.guest, context(room.guest), listOf(privateText), emptyMap())
+        assertEquals(0, service.inspect(room.owner, room.board.id).canvas.counts.objects)
+        assertEquals(0, service.inspect(room.visitor, room.board.id).canvas.counts.objects)
+        assertEquals("Private feature idea", service.inspect(room.visitor, room.board.id, capability = room.guest.draftKey).canvas.objects.single().text)
+        assertEquals(0, service.inspect(room.owner, room.board.id, capability = room.host.draftKey).canvas.counts.objects)
+        val proposal = service.propose(room.visitor, room.board.id, null, room.guest.draftKey, "Private proposal", json.readTree("""[{"type":"create_note","text":"Private criterion"}]"""))
+        assertTrue(service.proposals(room.owner, room.board.id, null, null).isEmpty())
+        assertTrue(service.proposals(room.visitor, room.board.id, null, null).isEmpty())
+        assertEquals(proposal.id, service.proposals(room.visitor, room.board.id, null, room.guest.draftKey).single().id)
+        dataSource.connection.use { c ->
+            assertEquals(DraftCapabilities.hash(room.guest, context(room.guest).roundId), c.query("SELECT owner_key FROM assistant_proposals WHERE id=?", proposal.id) { it.next(); it.getString(1) })
+        }
+        rounds.stop(room.host, context(room.host))
+        assertTrue(service.proposals(room.visitor, room.board.id, null, null).isEmpty())
+        access.setMemberAccess(room.board.id, room.guest.id, true, room.owner)
+        error("not_found") { service.inspect(room.visitor, room.board.id) }
+    }
+
+    @Test fun `assistant proposals reject changed targets and apply with one durable receipt`() {
+        val room = room()
+        val service = assistant()
+        val text = (shape("feature") as com.fasterxml.jackson.databind.node.ObjectNode).put("type", "text").put("text", "Original feature")
+        store.patch(room.host, context(room.host), listOf(text), emptyMap())
+        val actions = json.readTree("""[{"type":"update_text","id":"feature","text":"Refined feature"}]""")
+        val stale = service.propose(room.owner, room.board.id, null, null, "Refine", actions)
+        val changed = text.deepCopy().put("text", "Someone else's edit")
+        store.patch(room.guest, context(room.guest), listOf(changed), emptyMap())
+        error("stale_proposal") { store.patch(room.host, context(room.host).copy(commandId = stale.id), listOf(text), emptyMap()) }
+        assertEquals("pending", service.proposals(room.owner, room.board.id, null, null).first { it.id == stale.id }.status)
+        val valid = service.propose(room.owner, room.board.id, null, null, "Refine", actions)
+        error("forbidden") { store.patch(room.guest, context(room.guest).copy(commandId = valid.id), listOf(text), emptyMap()) }
+        val command = context(room.host).copy(commandId = valid.id)
+        val result = store.patch(room.host, command, listOf(text.deepCopy().put("text", "Refined feature")), emptyMap())
+        assertFalse(result.result.duplicate)
+        assertEquals("applied", service.proposals(room.owner, room.board.id, null, null).first { it.id == valid.id }.status)
+        assertTrue(store.patch(room.host, command, listOf(text), emptyMap()).result.duplicate)
+        assertEquals("Refined feature", service.inspect(room.owner, room.board.id).canvas.objects.single().text)
+    }
+
+    @Test fun `pending assistant proposals remain visible behind recent applied history`() {
+        val room = room()
+        val service = assistant()
+        val scope = service.inspect(room.owner, room.board.id)
+        val pending = service.propose(room.owner, room.board.id, null, null, "Pending review", json.readTree("""[{"type":"create_note","text":"Feature"}]"""))
+        dataSource.connection.use { c ->
+            repeat(60) {
+                val old = pending.copy(id = UUID.randomUUID(), message = "Applied history", status = "applied")
+                c.update("INSERT INTO assistant_proposals(id,board_id,page_id,owner_key,epoch,body,status) VALUES(?,?,?,?,?,?::jsonb,'applied')",
+                    old.id, room.board.id, pending.pageId, scope.ownerKey, pending.epoch, json.writeValueAsString(old))
+            }
+        }
+        assertEquals(pending.id, service.proposals(room.owner, room.board.id, null, null).first().id)
+        service.dismiss(room.owner, room.board.id, pending.id, null)
+        assertTrue(service.proposals(room.owner, room.board.id, null, null).none { it.id == pending.id })
+    }
+
     private fun user(name: String = "User") =
         LoginIdentity(
             "https://identity.test/realm",

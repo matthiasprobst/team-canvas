@@ -110,11 +110,12 @@ class MigrationIntegrationTest {
         assertEquals(setOf("1", "2"), oldHistory.keys)
 
         val upgraded = Flyway.configure().dataSource(source).schemas(schema).cleanDisabled(true).load()
-        assertEquals(1, upgraded.migrate().migrationsExecuted)
+        assertEquals(2, upgraded.migrate().migrationsExecuted)
         source.connection.use { c ->
             assertEquals(before, snapshot(c), "Forward migration changed existing persisted data")
             val afterHistory = history(c)
-            assertEquals(setOf("1", "2", "3"), afterHistory.keys)
+            assertEquals(setOf("1", "2", "3", "4"), afterHistory.keys)
+            assertEquals(0, c.query("SELECT count(*) FROM assistant_proposals") { it.next(); it.getInt(1) })
             oldHistory.forEach { (version, checksum) -> assertEquals(checksum, afterHistory[version]) }
             assertTrue(AdminAudit.list(c).isEmpty())
             AdminAudit.record(c, owner, member, "reassign", "succeeded", board)

@@ -44,7 +44,7 @@ jobs:
       - run: mvn -B verify
         working-directory: backend
   containers:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       COMPOSE_PROJECT_NAME: team-canvas-ci-readiness
     steps:
@@ -64,6 +64,9 @@ jobs:
       - name: Verify complete Compose stack
         env:
           BASE_URL: http://localhost:8088
+          # The e2e suite reuses two accounts back to back, so it needs more headroom than production.
+          TEAM_CANVAS_HTTP_REQUESTS_PER_MINUTE: "2000"
+          TEAM_CANVAS_JOIN_REQUESTS_PER_MINUTE: "300"
         run: |
           printf 'DB_PASSWORD=%s\n' "$(openssl rand -hex 24)" > .env
           cat > /tmp/team-canvas-ci-images.yaml <<'IMAGES'

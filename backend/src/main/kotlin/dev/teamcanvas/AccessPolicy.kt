@@ -15,6 +15,12 @@ class AccessPolicy {
     )
     lateinit var origins: String
 
+    @ConfigProperty(name = "team-canvas.http-requests-per-minute", defaultValue = "240")
+    @JvmField final var httpRequestsPerMinute: Int = 240
+
+    @ConfigProperty(name = "team-canvas.join-requests-per-minute", defaultValue = "30")
+    @JvmField final var joinRequestsPerMinute: Int = 30
+
     fun allowsOrigin(origin: String?): Boolean =
         if (origin.isNullOrBlank()) false else origins.split(',').map { it.trim() }.contains(origin)
 }
@@ -68,8 +74,8 @@ constructor(
         )
             throw ClientException("forbidden", "Request from an untrusted origin rejected.")
         val client = Security.hash(identity.issuer + "\n" + identity.subject)
-        limits.require("http:$client", 240, 60_000)
+        limits.require("http:$client", policy.httpRequestsPerMinute, 60_000)
         if (context.method == "POST" && (path == "api/boards" || path.endsWith("/join") || path.endsWith("/start-template")))
-            limits.require("join:$client", 30, 60_000)
+            limits.require("join:$client", policy.joinRequestsPerMinute, 60_000)
     }
 }

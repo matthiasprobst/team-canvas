@@ -29,6 +29,22 @@ function accepted(session, command, revision, scope = 'public', actorId = 'me') 
   session.receive({ type: 'ack', commandId: command.commandId, revision });
 }
 
+test('assistant proposals use one stable command receipt and retain it through reconnect', () => {
+  const { session, sent } = client();
+  session.applyAssistant('proposal-id', [box('public'), box('ai-note')], {});
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].commandId, 'proposal-id');
+  assert.equal(sent[0].elements.length, 1);
+  assert.throws(() => session.applyAssistant('another-id', [box('public')], {}), /Wait for Saved/);
+  session.disconnected();
+  session.receive({ type: 'snapshot', data: snapshot() });
+  assert.equal(sent.at(-1).commandId, 'proposal-id');
+  accepted(session, sent.at(-1), 1);
+  assert.equal(session.view().lastAcknowledgedCommandId, 'proposal-id');
+  assert.equal(session.view().unsaved, false);
+  assert.equal(session.view().elements.filter(element => element.id === 'ai-note').length, 1);
+});
+
 test('stop waits for this browser pending edits to be acknowledged', () => {
   const { session, sent } = client(true);
   session.localChange([box('public'), box('private', 42)], {});

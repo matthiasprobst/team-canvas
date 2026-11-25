@@ -10,7 +10,7 @@
     "preview": "vite preview --host 0.0.0.0",
     "predev": "node scripts/copy-fonts.mjs",
     "prebuild": "node scripts/copy-fonts.mjs",
-    "test:sync": "tsc --ignoreConfig --target es2022 --module commonjs --moduleResolution bundler --strict --noUnusedLocals --noUnusedParameters --skipLibCheck --outDir ../.test-build src/protocol.ts src/protocolCodec.ts src/syncCore.ts src/syncSession.ts src/draftExport.ts && node --test ../tests/*.test.mjs",
+    "test:sync": "tsc --ignoreConfig --target es2022 --module commonjs --moduleResolution bundler --strict --noUnusedLocals --noUnusedParameters --skipLibCheck --outDir ../.test-build src/protocol.ts src/protocolCodec.ts src/syncCore.ts src/syncSession.ts src/draftExport.ts src/assistantHistory.ts && node --test ../tests/*.test.mjs",
     "test:e2e": "playwright test --config ../tests/browser/playwright.config.mjs",
     "typecheck": "tsc --noEmit --incremental false",
     "inventory": "node scripts/dependency-inventory.mjs"
@@ -20,17 +20,19 @@
     "lucide-react": "^1.59.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "react-router-dom": "^7.18.4"
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^7.18.4",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^6.1.2",
     "playwright": "1.56.1",
+    "tailwindcss": "^4.3.3",
     "typescript": "~7.0.2",
-    "vite": "^8.3.4",
-    "@tailwindcss/vite": "^4.3.3",
-    "tailwindcss": "^4.3.3"
+    "vite": "^8.3.4"
   },
   "overrides": {
     "@excalidraw/excalidraw": {

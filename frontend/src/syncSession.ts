@@ -27,6 +27,7 @@ const THROTTLE_RETRY_MS = 1200;
 type Flight = { command: BoardCommand; accepted: boolean; dispatchedAt: number; retryAfter: number | null };
 type QueuedAction = { type: ControlType } | PageAction;
 export interface SessionView {
+  lastAcknowledgedCommandId?: string;
   snapshot: Snapshot | null;
   elements: ElementData[];
   files: Files;
@@ -50,6 +51,7 @@ export class SyncSession {
   private online = false;
   private recovery: ElementData[] = [];
   private error = "";
+  private lastAcknowledgedCommandId: string | undefined;
 
   constructor(
     private readonly send: (packet: object) => boolean,
@@ -62,6 +64,7 @@ export class SyncSession {
     const overlay =
       this.flight?.command.type === "patch" && !this.flight.accepted ? this.flight.command.elements : [];
     return {
+      lastAcknowledgedCommandId: this.lastAcknowledgedCommandId,
       snapshot: this.snapshot,
       elements: mergeById(mergeById(this.canonical, overlay), [...this.pending.values()]),
       files: this.files,
@@ -75,6 +78,21 @@ export class SyncSession {
 
   private emit() {
     this.changed(this.view());
+  }
+
+  /** A bounded assistant proposal is one receipt-backed patch and one editor history entry. */
+  applyAssistant(id: string, elements: readonly ElementData[], files: Files) {
+    if (!this.online || !this.snapshot || this.action || this.awaitingState || this.flight || this.pending.size)
+      throw new Error("Wait for Saved before applying an assistant proposal.");
+    this.localChange(elements, files);
+    const changes = [...this.pending.values()];
+    if (!changes.length || changes.length > PATCH_BATCH_ELEMENTS || JSON.stringify(changes).length > 250_000) {
+      this.pending.clear();
+      this.emit();
+      throw new Error("The proposal is empty or too large. Please ask for fewer objects.");
+    }
+    this.pending.clear();
+    this.dispatch({ ...this.context(), commandId: id, type: "patch", elements: changes, files: {} });
   }
 
   disconnected(message = "Connection lost. Changes are kept locally until you reconnect.") {
@@ -260,6 +278,7 @@ export class SyncSession {
         break;
       case "ack":
         if (this.flight?.command.commandId !== event.commandId) break;
+        this.lastAcknowledgedCommandId = event.commandId;
         if (this.flight.command.type !== "patch") {
           this.awaitingState = true;
           this.action = null;

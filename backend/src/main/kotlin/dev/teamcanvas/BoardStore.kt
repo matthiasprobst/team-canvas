@@ -68,6 +68,7 @@ constructor(
                 return@command PatchResult(CommandResult(it, duplicate = true), "private")
             }
             RoundRules.requireContext(state, context)
+            AssistantProposalPersistence.check(connection, who, state, context, json)
             val scope = if (state.mode == "standard") "public" else "private"
             if (scope == "private") DraftCapabilities.register(connection, who, state.roundId!!)
             val previousUsage = repository.limits.usage(connection, who.boardId)
@@ -151,6 +152,7 @@ constructor(
             )
             repository.limits.requireStorage(connection, who.boardId, previousUsage)
             val ack = repository.commitCommand(connection, who, context.commandId, context.roundId)
+            AssistantProposalPersistence.applied(connection, who, context.commandId)
             PatchResult(CommandResult(ack), scope)
         }
 
